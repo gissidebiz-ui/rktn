@@ -2,23 +2,21 @@ import os
 import csv
 import random
 import string
-import time
 import subprocess
 from google import genai
 
 # ================================
 # 1. Google AI API 設定
 # ================================
-client = genai.Client(api_key="AIzaSyAP81TrnMzM39gZsmdrDsy9EXzUTKZDSSA")  # ← あなたのキーを入れる
+client = genai.Client(api_key="AIzaSyAP81TrnMzM39gZsmdrDsy9EXzUTKZDSSA")
 
 # ================================
 # 2. 古いHTML削除（index.htmlだけ残す）
 # ================================
 def cleanup_html():
-    html_dir = "../html"
-    for f in os.listdir(html_dir):
+    for f in os.listdir("."):
         if f.endswith(".html") and f not in ["index.html"]:
-            os.remove(os.path.join(html_dir, f))
+            os.remove(f)
 
 # ================================
 # 3. ランダムファイル名生成
@@ -50,31 +48,7 @@ def generate_short_url(affiliate_url):
     return f"https://gissidebiz-ui.github.io/rakuten-shortener/{filename}"
 
 # ================================
-# 6. AI呼び出し（リトライ付き）
-# ================================
-def generate_with_retry(prompt, max_retries=5):
-    for i in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.0-flash",
-                contents=prompt
-            )
-
-            # 新SDKのレスポンス形式に対応
-            if hasattr(response, "text") and response.text:
-                return response.text.strip()
-            else:
-                return response.candidates[0].content.parts[0].text.strip()
-
-        except Exception as e:
-            wait = 1 + i
-            print(f"AI呼び出し失敗: {e} → {wait}秒待機して再試行")
-            time.sleep(wait)
-
-    return "[AIエラー] 最大リトライ回数を超えました"
-
-# ================================
-# 7. 投稿文生成
+# 6. Google AI API で投稿文生成
 # ================================
 def generate_post_text(product_name, short_url):
     safe_name = product_name[:80]
@@ -98,21 +72,35 @@ def generate_post_text(product_name, short_url):
 ・1行で完結（改行しない）
 """
 
-    text = generate_with_retry(prompt)
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",   # ← ここが最重要
+            contents=prompt
+        )
 
-    # 改行を \n に変換して1行にする
-    text = text.replace("\n", "\\n")
+        # 新SDKのレスポンス形式に対応
+        if hasattr(response, "text") and response.text:
+            text = response.text.strip()
+        else:
+            text = response.candidates[0].content.parts[0].text.strip()
 
-    # 50文字以内に強制トリム
-    if len(text) > 50:
-        text = text[:50]
+        # 改行を \n に変換して1行にする
+        text = text.replace("\n", "\\n")
 
-    return f"{text} {short_url}"
+        # 50文字以内に強制トリム
+        if len(text) > 50:
+            text = text[:50]
+
+        return f"{text} {short_url}"
+
+    except Exception as e:
+        return f"[AI生成エラー] {product_name} → {short_url} | {str(e)}"
 
 # ================================
-# 8. メイン処理
+# 7. メイン処理
 # ================================
 def main():
+    input_file = "input.csv"
 
     # 古いHTML削除
     cleanup_html()
@@ -133,13 +121,10 @@ def main():
             post = generate_post_text(product_name, short_url)
             posts.append(post)
 
-    # GitHubへ push（失敗しても止まらない）
-    try:
-        subprocess.run(["git", "add", "-A"], check=True)
-        subprocess.run(["git", "commit", "-m", "AI auto post update"], check=True)
-        subprocess.run(["git", "push"], check=True)
-    except Exception as e:
-        print(f"GitHub push エラー: {e}")
+    # GitHubへ push（削除も含めて）
+    subprocess.run(["git", "add", "-A"])
+    subprocess.run(["git", "commit", "-m", "AI auto post update"])
+    subprocess.run(["git", "push"])
 
     # 出力
     with open("../data/output/posts.txt", "w", encoding="utf-8") as f:
