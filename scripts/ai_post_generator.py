@@ -36,7 +36,7 @@ def create_redirect_html(url, filename):
   <body></body>
 </html>
 """
-    with open(filename, "w", encoding="utf-8") as f:
+    with open(f"html/{filename}", "w", encoding="utf-8") as f:
         f.write(html)
 
 # ================================
@@ -108,7 +108,7 @@ def main():
     posts = []
 
     # CSV読み込み
-    with open(input_file, "r", encoding="utf-8") as f:
+    with open("../data/input.csv", "r", encoding="utf-8") as f:
         reader = csv.reader(f)
         for row in reader:
             product_name = row[0]
@@ -127,7 +127,7 @@ def main():
     subprocess.run(["git", "push"])
 
     # 出力
-    with open("posts.txt", "w", encoding="utf-8") as f:
+    with open("data/posts.txt", "w", encoding="utf-8") as f:
         for p in posts:
             f.write(p + "\n")
 
