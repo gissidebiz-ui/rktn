@@ -36,7 +36,7 @@ def create_redirect_html(url, filename):
   <body></body>
 </html>
 """
-    with open(f"html/{filename}", "w", encoding="utf-8") as f:
+    with open(f"../html/{filename}", "w", encoding="utf-8") as f:
         f.write(html)
 
 # ================================
