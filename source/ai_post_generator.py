@@ -51,23 +51,26 @@ def generate_short_url(affiliate_url):
 # 6. Google AI API で投稿文生成
 # ================================
 def generate_post_text(product_name, short_url):
+    # 商品名が長すぎるとプロンプトが壊れるので短縮
+    safe_name = product_name[:80]
+
     prompt = f"""
 以下の情報から、X（旧Twitter）向けの投稿文を作成してください。
 
 【商品名】
-{product_name}
+{safe_name}
 
 【短縮URL】
 {short_url}
 
 条件：
-・140文字以内
-・売れそうなキャッチコピー寄りの文体
+・本文は50文字以内
+・売れそうなキャッチコピー寄り
 ・強すぎず自然なテンション
-・絵文字は1〜2個だけ
+・絵文字は1つだけ
 ・短縮URLは文末に置く
-・宣伝臭くなりすぎない
-・読みやすく、1ツイートで完結
+・宣伝臭くしない
+・1行で完結（改行しない）
 """
 
     try:
@@ -75,8 +78,24 @@ def generate_post_text(product_name, short_url):
             model="gemini-2.5-flash",
             contents=prompt
         )
-        return response.text.strip()
-    except Exception as e:
+
+        # 新SDKのレスポンス形式に対応
+        if hasattr(response, "text") and response.text:
+            text = response.text.strip()
+        else:
+            text = response.candidates[0].content.parts[0].text.strip()
+
+        # 改行を \n に変換して1行にする
+        text = text.replace("\n", "\\n")
+
+        # 念のため50文字以内に強制トリム
+        if len(text) > 50:
+            text = text[:50]
+
+        # URLを文末に追加
+        return f"{text} {short_url}"
+
+    except Exception:
         return f"[AI生成エラー] {product_name} → {short_url}"
 
 # ================================
