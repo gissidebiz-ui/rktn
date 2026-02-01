@@ -1,5 +1,6 @@
 import os
 import csv
+import glob
 import random
 import string
 import time
@@ -113,28 +114,44 @@ def generate_post_text(product_name, short_url):
 # ================================
 # 8. メイン処理
 # ================================
+
+
 def main():
 
     # 古いHTML削除
     cleanup_html()
 
-    posts = []
+    # ../data/input/ 内の *_input.csv を全部取得
+    input_files = glob.glob("../data/input/*_input.csv")
 
-    # CSV読み込み
-    with open("../data/input/input.csv", "r", encoding="utf-8") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            product_name = row[0]
-            affiliate_url = row[1]
+    for input_path in input_files:
+        filename = os.path.basename(input_path)
 
-            # 短縮URL生成
-            short_url = generate_short_url(affiliate_url)
+        # アカウント名を抽出（例：puu_input.csv → puu）
+        account = filename.replace("_input.csv", "")
 
-            # AI投稿文生成
-            post = generate_post_text(product_name, short_url)
-            posts.append(post)
+        output_path = f"../data/output/{account}_posts.txt"
+        posts = []
 
-    # GitHubへ push（失敗しても止まらない）
+        # CSV読み込み
+        with open(input_path, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                product_name = row[0]
+                affiliate_url = row[1]
+
+                short_url = generate_short_url(affiliate_url)
+                post = generate_post_text(product_name, short_url)
+                posts.append(post)
+
+        # 出力
+        with open(output_path, "w", encoding="utf-8") as f:
+            for p in posts:
+                f.write(p + "\n")
+
+        print(f"{output_path} を生成しました！")
+
+    # GitHub push（任意）
     try:
         subprocess.run(["git", "add", "-A"], check=True)
         subprocess.run(["git", "commit", "-m", "AI auto post update"], check=True)
@@ -142,12 +159,7 @@ def main():
     except Exception as e:
         print(f"GitHub push エラー: {e}")
 
-    # 出力
-    with open("../data/output/posts.txt", "w", encoding="utf-8") as f:
-        for p in posts:
-            f.write(p + "\n")
-
-    print("完了しました！ → posts.txt に投稿文を保存しました。")
+    print("全アカウントの投稿文生成が完了しました！")
 
 if __name__ == "__main__":
     main()
