@@ -66,21 +66,11 @@ class PostMerger:
             # 交互マージの実行
             merged = self.merge_alternate(lines1, lines2)
 
-            # AI の出力に稀に含まれる不要なリテラル文字列（\\n 等）をクリーンアップ
-            cleaned_merged = []
-            for line in merged:
-                # 行頭の不要な改行指定を削除
-                if line.startswith("\\n"):
-                    line = line[2:]
-                # 特殊なエスケープシーケンスなどを除去
-                line = line.replace("\\n", "")
-                cleaned_merged.append(line)
-
             output_file = os.path.join(base_path, f"{account}_merged.txt")
 
             # 最終的なマージ後ファイルを書き出し
             with open(output_file, "w", encoding="utf-8") as out:
-                out.write("\n".join(cleaned_merged))
+                out.write("\n".join(merged))
 
             # 中間ファイルを削除してストレージをクリーンに保つ
             os.remove(aff_file)
