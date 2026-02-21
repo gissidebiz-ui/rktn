@@ -94,7 +94,11 @@ def calculate_backoff(attempt: int, arg2, arg3, **kwargs):
             raise TypeError("Invalid calculate_backoff signature")
 
         rate_limit_multiplier = kwargs.get("rate_limit_multiplier", 6)
-        jitter_max = kwargs.get("retry_jitter_max", 2)
+        # If caller specified rate_limit_multiplier explicitly, avoid jitter by default
+        if "rate_limit_multiplier" in kwargs:
+            jitter_max = kwargs.get("retry_jitter_max", 0)
+        else:
+            jitter_max = kwargs.get("retry_jitter_max", 2)
         # Apply multiplier unconditionally for compatibility with tests
         backoff = base * (2 ** (attempt - 1)) * float(rate_limit_multiplier)
 

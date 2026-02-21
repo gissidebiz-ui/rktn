@@ -93,16 +93,15 @@ class TestConfigLoaderIntegration(unittest.TestCase):
         self.assertIn("base_url", secrets)
 
     def test_load_accounts_returns_account_list(self):
-        """Test that accounts.yaml is loaded correctly."""
+        """Test that accounts.yaml is loaded correctly (mapping form)."""
         from config_loader import load_accounts
         accounts = load_accounts()
-        
-        self.assertIsInstance(accounts, list)
+
+        self.assertIsInstance(accounts, dict)
         # Should have at least one account
         self.assertGreater(len(accounts), 0)
         # Each account should have required fields
-        for account in accounts:
-            self.assertIn("name", account)
+        for name, account in accounts.items():
             self.assertIn("themes", account)
 
     def test_load_themes_returns_theme_dict(self):

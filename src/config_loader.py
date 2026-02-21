@@ -66,11 +66,8 @@ def load_accounts() -> Dict[str, Any]:
     Returns:
         Dictionary mapping account names to account configurations
     """
-    data = load_yaml(_get_config_path("accounts.yaml"))
-    # Backwards-compatibility: tests expect a list of account dicts with 'name' key
-    if isinstance(data, dict):
-        return [{"name": k, **v} for k, v in data.items()]
-    return data
+    # Return the raw mapping (dict) so integration callers receive mapping
+    return load_yaml(_get_config_path("accounts.yaml"))
 
 
 def load_themes() -> Dict[str, Any]:
