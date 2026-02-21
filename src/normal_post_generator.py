@@ -40,7 +40,19 @@ class NormalPostGenerator:
             self.logger.debug(f"テーマ '{theme_key}' のポスト生成中 ({index+1}/{posts_per_theme})")
             text = generate_with_retry(self.client, prompt, self.config["normal_post_generation"])
             # CSV 保存時に 1 行に収めるため、改行をリテラル表現に変換
-            return text.replace("\n", "\\n")
+            text = text.replace("\n", "\\n")
+            
+            # --- 不要な文字列（ノイズ）の除去 ---
+            import re
+            # 1. 見出し（【...】）や「例：」などを削除
+            text = re.sub(r'^【.*?】', '', text)
+            text = re.sub(r'^例[1-9]：', '', text)
+            text = re.sub(r'^例：', '', text)
+            # 2. AIのメタ的な発言（〜パターン等）を削除
+            text = re.sub(r'上記例を参考にして.*', '', text)
+            text = re.sub(r'他に\d+パターン.*', '', text)
+            
+            return text.strip()
 
         # 設定ファイルからテーマあたりの生成件数を取得
         posts_per_theme = self.config["normal_post_generation"]["posts_per_theme"]

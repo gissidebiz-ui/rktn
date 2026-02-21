@@ -152,8 +152,19 @@ class AffiliatePostGenerator:
         text = re.sub(r'https?://[\w/:%#\$&\?\(\)~\.=\+\-]+', '', text)
         # [短縮URL] などを \n に置き換える
         text = text.replace("[短縮URL]", "\\n").replace("【短縮URL】", "\\n")
-        text = text.strip()
         
+        # --- 不要な文字列（ノイズ）の除去 ---
+        # 1. 見出し（【...】）や「例：」などを削除
+        text = re.sub(r'^【.*?】', '', text)
+        text = re.sub(r'^例[1-9]：', '', text)
+        text = re.sub(r'^例：', '', text)
+        text = text.replace("本文：", "").replace("投稿内容：", "")
+        # 2. AIのメタ的な発言（〜パターン等）を削除
+        text = re.sub(r'上記例を参考にして.*', '', text)
+        text = re.sub(r'他に\d+パターン.*', '', text)
+        # 3. 日本語以外のノイズ（ロシア語等）が単発で混入する場合の簡易的な対策（記号等も整理）
+        text = text.strip()
+
         # ハッシュタグの前に強制的に改行を挿入（設定にあれば）
         if "#" in text:
             text = text.replace(" #", "\\n#").replace("　#", "\\n#")
