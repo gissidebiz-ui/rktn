@@ -96,7 +96,7 @@ def generate_short_url(
     Returns:
         str: Short URL in format {BASE_URL}/{filename}.html
     """
-    secrets = config_loader.load_secrets()
+    secrets = load_secrets()
     BASE_URL = secrets.get("base_url", "")
 
     filename = random_filename()
