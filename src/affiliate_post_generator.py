@@ -5,6 +5,7 @@ import time
 import subprocess
 import re
 import logging
+from datetime import datetime
 from typing import Dict, List, Any
 from di_container import get_container, DIContainer
 from ai_helpers import generate_with_retry
@@ -28,7 +29,15 @@ class AffiliatePostGenerator:
     
     def cleanup_html(self) -> None:
         """Remove old HTML files based on retention policy."""
-        html_dir = "../html"
+        # スクリプトの場所基準で html ディレクトリを特定
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        html_dir = os.path.join(script_dir, "..", "html")
+        
+        # ディレクトリが存在しない場合は何もしない
+        if not os.path.exists(html_dir):
+            self.logger.warning(f"HTML directory not found: {html_dir}")
+            return
+
         now = time.time()
         
         # Get retention settings from config
@@ -39,20 +48,52 @@ class AffiliatePostGenerator:
         excluded_files = html_config.get("excluded_files", ["index.html"])
         extensions = html_config.get("default_extensions", [".html"])
 
+        html_files = []
         for f in os.listdir(html_dir):
-            # Skip excluded files and non-matching extensions
             if f in excluded_files or not any(f.endswith(ext) for ext in extensions):
                 continue
-                
             file_path = os.path.join(html_dir, f)
-            file_mtime = os.path.getmtime(file_path)
+            try:
+                mtime = os.path.getmtime(file_path)
+                html_files.append({"name": f, "path": file_path, "mtime": mtime})
+            except Exception:
+                continue
+
+        if not html_files:
+            return
+
+        # 最新のファイル（当日実行分を特定するため）
+        latest_file = max(html_files, key=lambda x: x["mtime"])
+        latest_mtime = latest_file["mtime"]
+        
+        # 「最新セット」の定義: 最新のファイルから10分以内に更新されたもの
+        SET_THRESHOLD_SECONDS = 10 * 60 
+        
+        # 今日の日付
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        for item in html_files:
+            f = item["name"]
+            file_path = item["path"]
+            file_mtime = item["mtime"]
             
-            # Delete files older than retention period
-            if now - file_mtime > seconds_in_retention:
+            # 条件1: 保持期間（5日）を過ぎているか
+            is_expired = (now - file_mtime > seconds_in_retention)
+            
+            # 条件2: 当日分だが最新セットではないか
+            # ファイルのmtimeから日付を取得
+            file_date_str = datetime.fromtimestamp(file_mtime).strftime("%Y-%m-%d")
+            is_today = (file_date_str == today_str)
+            
+            # 最新セットではない（最新のファイルから10分より前に作成された）
+            is_old_today_set = is_today and (latest_mtime - file_mtime > SET_THRESHOLD_SECONDS)
+
+            if is_expired or is_old_today_set:
                 try:
                     os.remove(file_path)
-                    print(f"削除しました: {f} ({retention_days}日以上経過)")
-                    self.logger.info(f"Deleted old HTML file: {f}")
+                    reason = "5日以上経過" if is_expired else "当日旧セット"
+                    print(f"削除しました: {f} ({reason})")
+                    self.logger.info(f"Deleted HTML file: {f} ({reason})")
                 except Exception as e:
                     print(f"削除失敗: {f} - {e}")
                     self.logger.warning(f"Failed to delete HTML file: {f} - {e}")
