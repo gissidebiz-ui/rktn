@@ -1,5 +1,5 @@
 import csv
-import requests
+import requests  # type: ignore
 import time
 from urllib.parse import urlparse, parse_qs
 from typing import Dict, List, Tuple, Any

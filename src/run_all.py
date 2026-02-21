@@ -2,7 +2,7 @@ import os
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 import time
 import subprocess
-import yaml
+import yaml  # type: ignore
 from datetime import datetime, timedelta
 from merge_posts import PostMerger
 from di_container import get_container

@@ -64,16 +64,26 @@ class PostMerger:
 
             merged = self.merge_alternate(lines1, lines2)
 
+            # Cleanup literal \\n strings which sometimes appear in AI output
+            cleaned_merged = []
+            for line in merged:
+                # Remove leading \\n (2 characters)
+                if line.startswith("\\n"):
+                    line = line[2:]
+                # Remove any other literal \\n sequences
+                line = line.replace("\\n", "")
+                cleaned_merged.append(line)
+
             output_file = os.path.join(base_path, f"{account}_merged.txt")
 
             # 出力は通常の UTF-8 でOK
             with open(output_file, "w", encoding="utf-8") as out:
-                out.write("\n".join(merged))
+                out.write("\n".join(cleaned_merged))
 
             os.remove(aff_file)
             os.remove(post_file)
 
-            print(f"[DONE] {account}: merged.txt 作成 & 元ファイル削除完了")
+            print(f"[DONE] {account}: merged.txt 作成 (クリーンアップ済) & 元ファイル削除完了")
 
 
 def main() -> None:

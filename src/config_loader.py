@@ -3,7 +3,7 @@ Configuration loader module.
 Handles loading YAML configuration files.
 """
 import os
-import yaml
+import yaml  # type: ignore
 from typing import Dict, Any
 
 
