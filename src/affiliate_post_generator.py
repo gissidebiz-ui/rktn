@@ -148,44 +148,49 @@ class AffiliatePostGenerator:
 """
         text = generate_with_retry(self.client, prompt, self.config["affiliate_post_generation"])
         
-        # AI が勝手に URL やプレースホルダを出力に含める場合があるため排除・置換
+        # ===== Step 1: 改行をリテラル形式に統一（行ずれ防止の最重要対策） =====
+        # AI が実際の改行を返すことがあるため、最初にすべてリテラル \\n に変換
+        text = text.replace("\r\n", "\\n").replace("\n", "\\n")
+        
+        # ===== Step 2: URL やプレースホルダの排除 =====
         text = re.sub(r'https?://[\w/:%#\$&\?\(\)~\.=\+\-]+', '', text)
-        # [短縮URL] などを \n に置き換える
         text = text.replace("[短縮URL]", "\\n").replace("【短縮URL】", "\\n")
         
-        # --- 不要な文字列（ノイズ）の除去 ---
-        # 1. 見出し（【...】）や「例：」などを削除
+        # ===== Step 3: 不要な文字列（ノイズ）の除去 =====
         text = re.sub(r'^【.*?】', '', text)
         text = re.sub(r'^例[1-9]：', '', text)
         text = re.sub(r'^例：', '', text)
         text = text.replace("本文：", "").replace("投稿内容：", "")
-        # 2. AIのメタ的な発言（〜パターン等）を削除
         text = re.sub(r'上記例を参考にして.*', '', text)
         text = re.sub(r'他に\d+パターン.*', '', text)
         
-        # 3. 改行をリテラル形式に統一（行ずれ防止の最重要対策）
-        text = text.replace("\n", "\\n")
+        # ===== Step 4: \\n のノーマライズ（重複排除） =====
+        # \\n が3つ以上連続する場合を \\n\\n に圧縮
+        while "\\n\\n\\n" in text:
+            text = text.replace("\\n\\n\\n", "\\n\\n")
+        # 先頭・末尾の \\n を除去
+        while text.startswith("\\n"):
+            text = text[2:]
+        while text.endswith("\\n"):
+            text = text[:-2]
+        text = text.strip()
         
-        # 4. プレースホルダやテンプレート用単語が含まれる場合はエラーとして扱う
-        # [ブランド名], 【商品名】, 〇〇, ○○, ◯◯, XX, △△, ΔΔ などを検知
+        # ===== Step 5: プレースホルダ / テンプレート用単語の検知 =====
         placeholder_pattern = r'\[.*?\]|【.*?】|〇{2,}|○{2,}|◯{2,}|[X]{2,}|[x]{2,}|[△]{2,}|[Δ]{2,}|[×]{2,}'
         template_words = ["ブランド名", "商品名", "店舗名", "会社名", "カテゴリー", "〇〇", "○○"]
-        
         if re.search(placeholder_pattern, text) or any(w in text for w in template_words):
             return "[AIエラー] プレースホルダまたはテンプレート用単語が含まれています"
         
-        # 5. 外国語が多すぎる場合のエラー判定（日本語が全くない場合）
+        # ===== Step 6: 外国語エラー判定 =====
         if not re.search(r'[ぁ-んァ-ン一-龥]', text):
              return "[AIエラー] 日本語が含まれていません"
 
-        text = text.strip()
-
-        # ハッシュタグの前に強制的に改行を挿入（設定にあれば）
+        # ===== Step 7: ハッシュタグの前に改行を挿入 =====
         if "#" in text:
             text = text.replace(" #", "\\n#").replace("　#", "\\n#")
             text = re.sub(r'([^\\n])#', r'\1\\n#', text)
 
-        # 最後に \n を加えて URL を結合（ユーザーの要望通り \n を確実に挿入）
+        # ===== Step 8: URL を結合（\\n を確実に挿入） =====
         return f"{text}\\n\\n{short_url}"
 
     def generate(self) -> None:

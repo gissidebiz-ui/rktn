@@ -73,8 +73,8 @@ class PostMerger:
                 out.write("\n".join(merged))
 
             # 中間ファイルを削除してストレージをクリーンに保つ
-            # os.remove(aff_file)
-            # os.remove(post_file)
+            os.remove(aff_file)
+            os.remove(post_file)
 
             print(f"[DONE] {account}: merged.txt を作成し、中間ファイルを削除しました")
 

@@ -39,34 +39,38 @@ class NormalPostGenerator:
             print(f"生成中: {theme_key} → {index+1}/{posts_per_theme}")
             self.logger.debug(f"テーマ '{theme_key}' のポスト生成中 ({index+1}/{posts_per_theme})")
             text = generate_with_retry(self.client, prompt, self.config["normal_post_generation"])
-            # CSV 保存時に 1 行に収めるため、改行をリテラル表現に変換
-            text = text.replace("\n", "\\n")
             
-            # --- 不要な文字列（ノイズ）の除去 ---
+            # ===== Step 1: 改行をリテラル形式に統一 =====
+            text = text.replace("\r\n", "\\n").replace("\n", "\\n")
+            
+            # ===== Step 2: 不要な文字列（ノイズ）の除去 =====
             import re
-            # 1. 見出し（【...】）や「例：」などを削除
             text = re.sub(r'^【.*?】', '', text)
             text = re.sub(r'^例[1-9]：', '', text)
             text = re.sub(r'^例：', '', text)
-            # 2. AIのメタ的な発言（〜パターン等）を削除
             text = re.sub(r'上記例を参考にして.*', '', text)
             text = re.sub(r'他に\d+パターン.*', '', text)
             
-            # 3. 改行をリテラル形式に統一（行ずれ防止）
-            text = text.replace("\n", "\\n")
+            # ===== Step 3: \\n のノーマライズ =====
+            while "\\n\\n\\n" in text:
+                text = text.replace("\\n\\n\\n", "\\n\\n")
+            while text.startswith("\\n"):
+                text = text[2:]
+            while text.endswith("\\n"):
+                text = text[:-2]
+            text = text.strip()
             
-            # 4. プレースホルダが含まれる場合はエラーとして扱う
+            # ===== Step 4: プレースホルダ検知 =====
             placeholder_pattern = r'\[.*?\]|【.*?】|〇{2,}|○{2,}|◯{2,}|[X]{2,}|[x]{2,}|[△]{2,}|[Δ]{2,}|[×]{2,}'
             template_words = ["ブランド名", "商品名", "店舗名", "会社名", "カテゴリー", "〇〇", "○○"]
-            
             if re.search(placeholder_pattern, text) or any(w in text for w in template_words):
                 return "[AIエラー] プレースホルダまたはテンプレート用単語が含まれています"
                 
-            # 5. 外国語が多すぎる場合のエラー判定
+            # ===== Step 5: 外国語エラー判定 =====
             if not re.search(r'[ぁ-んァ-ン一-龥]', text):
                  return "[AIエラー] 日本語が含まれていません"
             
-            return text.strip()
+            return text
 
         # 設定ファイルからテーマあたりの生成件数を取得
         posts_per_theme = self.config["normal_post_generation"]["posts_per_theme"]
