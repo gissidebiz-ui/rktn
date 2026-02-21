@@ -3,62 +3,70 @@ import csv
 import glob
 import time
 import subprocess
-from config_loader import load_accounts, load_secrets, load_generation_policy
-from ai_helpers import create_ai_client, generate_with_retry
+import re
+from typing import Dict, List, Any
+from di_container import get_container, DIContainer
+from ai_helpers import generate_with_retry
 from html_generator import generate_short_url
 
-# ================================
-# 1. 設定読み込み
-# ================================
-accounts = load_accounts()
-config = load_generation_policy()
 
-# ================================
-# 2. Google AI API 設定
-# ================================
-secrets = load_secrets()
-API_KEY = secrets["google_api_key"]
-client = create_ai_client(API_KEY)
-
-# ================================
-# 3. 古いHTML削除（index.htmlだけ残す）
-# ================================
-def cleanup_html():
-    html_dir = "../html"
-    now = time.time()
+class AffiliatePostGenerator:
+    """Generator for affiliate X posts using dependency injection."""
     
-    # 設定から保持日数を取得
-    html_config = config.get("html_cleanup", {})
-    retention_days = config.get("affiliate_post_generation", {}).get("html_retention_days", 5)
-    seconds_in_retention = retention_days * 24 * 60 * 60
-    
-    excluded_files = html_config.get("excluded_files", ["index.html"])
-    extensions = html_config.get("default_extensions", [".html"])
-
-    for f in os.listdir(html_dir):
-        # 除外ファイルをスキップ、指定拡張子のみを対象
-        if f in excluded_files or not any(f.endswith(ext) for ext in extensions):
-            continue
-            
-        file_path = os.path.join(html_dir, f)
-        file_mtime = os.path.getmtime(file_path)
+    def __init__(self, container: DIContainer | None = None):
+        """Initialize with optional DI container.
         
-        # 保持期間を超えたファイルを削除
-        if now - file_mtime > seconds_in_retention:
-            try:
-                os.remove(file_path)
-                print(f"削除しました: {f} ({retention_days}日以上経過)")
-            except Exception as e:
-                print(f"削除失敗: {f} - {e}")
+        Args:
+            container: DI container instance (uses global if not provided)
+        """
+        self.container = container or get_container()
+        self.config = self.container.get_generation_policy()
+        self.accounts = self.container.get_accounts()
+        self.client = self.container.get_ai_client()
+    
+    def cleanup_html(self) -> None:
+        """Remove old HTML files based on retention policy."""
+        html_dir = "../html"
+        now = time.time()
+        
+        # Get retention settings from config
+        html_config = self.config.get("html_cleanup", {})
+        retention_days = self.config.get("affiliate_post_generation", {}).get("html_retention_days", 5)
+        seconds_in_retention = retention_days * 24 * 60 * 60
+        
+        excluded_files = html_config.get("excluded_files", ["index.html"])
+        extensions = html_config.get("default_extensions", [".html"])
 
-# ================================
-# 4. 投稿文生成
-# ================================
-def generate_post_text(product_name, short_url):
-    max_name_len = config["affiliate_post_generation"].get("max_product_name_length", 80)
-    safe_name = product_name[:max_name_len]
+        for f in os.listdir(html_dir):
+            # Skip excluded files and non-matching extensions
+            if f in excluded_files or not any(f.endswith(ext) for ext in extensions):
+                continue
+                
+            file_path = os.path.join(html_dir, f)
+            file_mtime = os.path.getmtime(file_path)
+            
+            # Delete files older than retention period
+            if now - file_mtime > seconds_in_retention:
+                try:
+                    os.remove(file_path)
+                    print(f"削除しました: {f} ({retention_days}日以上経過)")
+                except Exception as e:
+                    print(f"削除失敗: {f} - {e}")
 
-    prompt = f"""
+    def generate_post_text(self, product_name: str, short_url: str) -> str:
+        """Generate affiliate post text.
+        
+        Args:
+            product_name: Product name
+            short_url: Shortened URL
+            
+        Returns:
+            Generated post text
+        """
+        max_name_len = self.config["affiliate_post_generation"].get("max_product_name_length", 80)
+        safe_name = product_name[:max_name_len]
+
+        prompt = f"""
 以下の情報から、X（旧Twitter）向けの投稿文を作成してください。
 ※文章の中にURLは絶対に含めないでください。
 
@@ -74,108 +82,108 @@ def generate_post_text(product_name, short_url):
 ・宣伝臭くしない
 ・1行で完結（改行しない）
 """
-    text = generate_with_retry(client, prompt, config["affiliate_post_generation"])
-    
-    # 1. 不要なURL混入を削除（安全策）
-    import re
-    text = re.sub(r'https?://[\w/:%#\$&\?\(\)~\.=\+\-]+', '', text).strip()
-    
-    # 2. ハッシュタグが含まれているかチェック
-    if "#" in text:
-        text = text.replace(" #", "\\n#").replace("　#", "\\n#")
-        text = re.sub(r'([^\\n])#', r'\1\\n#', text)
+        text = generate_with_retry(self.client, prompt, self.config["affiliate_post_generation"])
+        
+        # Remove unwanted URLs
+        text = re.sub(r'https?://[\w/:%#\$&\?\(\)~\.=\+\-]+', '', text).strip()
+        
+        # Handle hashtags
+        if "#" in text:
+            text = text.replace(" #", "\\n#").replace("　#", "\\n#")
+            text = re.sub(r'([^\\n])#', r'\1\\n#', text)
 
-    # 3. 最終組み立て
-    return f"{text}\\n\\n{short_url}"
+        # Final assembly
+        return f"{text}\\n\\n{short_url}"
 
-# ================================
-# 5. メイン処理
-# ================================
-def main():
+    def generate(self) -> None:
+        """Generate affiliate posts for all accounts."""
+        self.cleanup_html()
 
-    cleanup_html()
+        input_files = glob.glob("../data/input/*_input.csv")
 
-    input_files = glob.glob("../data/input/*_input.csv")
+        for input_path in input_files:
+            filename = os.path.basename(input_path)
+            account = filename.replace("_input.csv", "")
 
-    for input_path in input_files:
-        filename = os.path.basename(input_path)
-        account = filename.replace("_input.csv", "")
+            output_path = f"../data/output/{account}_affiliate_posts.txt"
+            posts = []
 
-        output_path = f"../data/output/{account}_affiliate_posts.txt"
-        posts = []
-
-        # main関数内のループ
-        # 読み込み→短縮URL生成→生成（失敗は再試行するため蓄積）
-        entries = []
-        with open(input_path, "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                try:
-                    if len(row) < 3:
-                        continue
-                    product_name = row[0]
-                    affiliate_url = row[1]
-                    image_url = row[2]
-
-                    short_url = generate_short_url(affiliate_url, product_name, image_url)
-                    entries.append({
-                        "product_name": product_name,
-                        "short_url": short_url,
-                        "post": None
-                    })
-                except Exception as e:
-                    print(f"[ERROR] 行処理失敗: {row}")
-                    import traceback
-                    traceback.print_exc()
-                    continue
-
-        # 初回生成
-        for e in entries:
-            e["post"] = generate_post_text(e["product_name"], e["short_url"])
-
-        # 失敗（空文字やAIエラー）だけ再試行するパス
-        def _is_failed(p):
-            if p is None:
-                return True
-            s = str(p).strip()
-            return s == "" or s.startswith("[AIエラー]")
-
-        failed_idxs = [i for i, e in enumerate(entries) if _is_failed(e.get("post"))]
-        if failed_idxs:
-            # 設定から再試行パス数を取得
-            retry_passes = config["affiliate_post_generation"].get("retry_passes", 3)
-            for rp in range(1, retry_passes + 1):
-                print(f"[再試行パス {rp}/{retry_passes}] アフィリエイト投稿の空結果を再実行します: {len(failed_idxs)} 件")
-                for idx in failed_idxs[:]:
-                    e = entries[idx]
+            # Read input CSV and generate short URLs
+            entries = []
+            with open(input_path, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                for row in reader:
                     try:
-                        new_post = generate_post_text(e["product_name"], e["short_url"])
-                        if not _is_failed(new_post):
-                            entries[idx]["post"] = new_post
-                            failed_idxs.remove(idx)
-                    except Exception as ex:
-                        print(f"[ERROR] 再試行で失敗: {e['product_name']}")
+                        if len(row) < 3:
+                            continue
+                        product_name = row[0]
+                        affiliate_url = row[1]
+                        image_url = row[2]
 
-        # 出力リスト作成
-        for e in entries:
-            posts.append(e.get("post") or "")
+                        short_url = generate_short_url(affiliate_url, product_name, image_url)
+                        entries.append({
+                            "product_name": product_name,
+                            "short_url": short_url,
+                            "post": None
+                        })
+                    except Exception as e:
+                        print(f"[ERROR] 行処理失敗: {row}")
+                        import traceback
+                        traceback.print_exc()
+                        continue
 
-        with open(output_path, "w", encoding="utf-8") as f:
-            for p in posts:
-                # 念のため、出力直前に「2重のバックスラッシュ」を「1本のバックスラッシュ」に強制変換
-                safe_post = p.replace("\\\\n", "\\n") 
-                f.write(safe_post + "\n")
+            # Generate initial posts
+            for e in entries:
+                e["post"] = self.generate_post_text(e["product_name"], e["short_url"])
 
-        print(f"{output_path} を生成しました！")
+            # Retry failed posts
+            def _is_failed(p: str | None) -> bool:
+                if p is None:
+                    return True
+                s = str(p).strip()
+                return s == "" or s.startswith("[AIエラー]")
 
-    try:
-        subprocess.run(["git", "add", "-A"], check=True)
-        subprocess.run(["git", "commit", "-m", "AI auto post update"], check=True)
-        subprocess.run(["git", "push"], check=True)
-    except Exception as e:
-        print(f"GitHub push エラー: {e}")
+            failed_idxs = [i for i, e in enumerate(entries) if _is_failed(e.get("post"))]
+            if failed_idxs:
+                retry_passes = self.config["affiliate_post_generation"].get("retry_passes", 3)
+                for rp in range(1, retry_passes + 1):
+                    print(f"[再試行パス {rp}/{retry_passes}] アフィリエイト投稿の空結果を再実行します: {len(failed_idxs)} 件")
+                    for idx in failed_idxs[:]:
+                        e = entries[idx]
+                        try:
+                            new_post = self.generate_post_text(e["product_name"], e["short_url"])
+                            if not _is_failed(new_post):
+                                entries[idx]["post"] = new_post
+                                failed_idxs.remove(idx)
+                        except Exception as ex:
+                            print(f"[ERROR] 再試行で失敗: {e['product_name']}")
 
-    print("全アカウントのアフィリエイト投稿文生成が完了しました！")
+            # Write output
+            for e in entries:
+                posts.append(e.get("post") or "")
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                for p in posts:
+                    safe_post = p.replace("\\\\n", "\\n")
+                    f.write(safe_post + "\n")
+
+            print(f"{output_path} を生成しました！")
+
+        try:
+            subprocess.run(["git", "add", "-A"], check=True)
+            subprocess.run(["git", "commit", "-m", "AI auto post update"], check=True)
+            subprocess.run(["git", "push"], check=True)
+        except Exception as e:
+            print(f"GitHub push エラー: {e}")
+
+        print("全アカウントのアフィリエイト投稿文生成が完了しました！")
+
+
+def main() -> None:
+    """Main entry point."""
+    generator = AffiliatePostGenerator()
+    generator.generate()
+
 
 if __name__ == "__main__":
     main()
