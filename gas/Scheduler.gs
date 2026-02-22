@@ -78,71 +78,77 @@ function getNextPostTime(lastPostTime) {
 }
 
 /**
- * 4件セットに対する投稿スケジュールを生成する
- * ゴールデンタイムにアフィリエイト投稿を優先配置
- * @param {Object[]} postSet - generatePostSet() の返却値
- * @param {Date} startTime - スケジュール開始時刻（省略時は現在時刻）
- * @returns {Object[]} スケジュール付きの postSet
+ * 投稿セットに日付を割り当てる
+ * @param {Object[]} postSet - 投稿オブジェクトの配列
+ * @param {Date} startTime - 開始時間の基準（オプション）
  */
-function generateSchedule(postSet, startTime) {
-  startTime = startTime || new Date();
+function generateSchedule(postSet, startTime = null) {
+  const result = [];
+  let baseTime = startTime
+    ? new Date(startTime.getTime())
+    : getInitialStartTime();
 
-  // 初回投稿時刻が休止時間の場合は翌朝へ
-  if (isQuietHours(startTime.getHours())) {
-    startTime.setHours(SCHEDULE_CONFIG.QUIET_HOURS_END, 0, 0, 0);
-    if (new Date() > startTime) {
-      startTime.setDate(startTime.getDate() + 1);
-    }
-  }
+  postSet.forEach((post, index) => {
+    // 次の投稿時間を 60分後として計算
+    baseTime = new Date(baseTime.getTime() + 60 * 60 * 1000);
 
-  // スケジュール時刻を計算
-  const scheduledPosts = [];
-  let currentTime = new Date(startTime);
-
-  postSet.forEach(function (post, index) {
-    if (index > 0) {
-      // 1件目以降は前の投稿から固定間隔を加える
-      // (getNextPostTime は内部で休止時間を考慮してスキップする)
-      currentTime = getNextPostTime(currentTime);
+    // 夜間（24:00〜07:00）の場合は翌朝にスキップ
+    if (
+      baseTime.getHours() < SCHEDULE_CONFIG.QUIET_HOURS_END ||
+      baseTime.getHours() >= 24
+    ) {
+      baseTime.setHours(SCHEDULE_CONFIG.QUIET_HOURS_END, 0, 0, 0);
+      if (baseTime.getHours() >= 24) baseTime.setDate(baseTime.getDate() + 1);
     }
 
-    // 揺らぎ（jitter）を加える（0〜N分）
-    const jitterMin = randomInt(0, SCHEDULE_CONFIG.JITTER_MAX_MIN || 0);
-    const scheduledTime = new Date(
-      currentTime.getTime() + jitterMin * 60 * 1000,
-    );
+    // 0〜5分のランダムな揺らぎ（Jitter）を加算
+    const jitterMs =
+      Math.floor(Math.random() * (SCHEDULE_CONFIG.JITTER_MAX_MIN + 1)) *
+      60 *
+      1000;
+    const scheduledTime = new Date(baseTime.getTime() + jitterMs);
 
-    post.scheduledTime = scheduledTime;
-    scheduledPosts.push(post);
+    result.push({
+      ...post,
+      scheduledTime: Utilities.formatDate(
+        scheduledTime,
+        "Asia/Tokyo",
+        "yyyy/MM/dd HH:mm",
+      ),
+    });
   });
 
-  Logger.log("[Scheduler] スケジュール生成完了（順序維持・揺らぎあり）:");
-  scheduledPosts.forEach(function (post) {
-    const timeStr = Utilities.formatDate(
-      post.scheduledTime,
-      "Asia/Tokyo",
-      "yyyy/MM/dd HH:mm",
-    );
-    Logger.log(`  ${timeStr} — ${post.type}`);
-  });
-
-  return scheduledPosts;
+  return result;
 }
 
 /**
- * 現在の時刻で投稿すべきか判定する
- * @returns {boolean}
+ * 初回の開始時間を取得（現在時刻または翌朝）
+ */
+function getInitialStartTime() {
+  const now = new Date();
+  const currentHour = now.getHours();
+
+  // 現在が休止時間中（24時〜7時）なら、今日の朝7時を開始にする
+  if (currentHour < SCHEDULE_CONFIG.QUIET_HOURS_END) {
+    const start = new Date(now.getTime());
+    start.setHours(SCHEDULE_CONFIG.QUIET_HOURS_END, 0, 0, 0);
+    return start;
+  }
+
+  // 現在が稼働時間中なら、現在時刻から開始する
+  // (ただし、即座に投稿されるのを避けるため、5分程度のバッファを持たせても良い)
+  const startWithBuffer = new Date(now.getTime() + 5 * 60 * 1000);
+  return startWithBuffer;
+}
+
+/**
+ * 現在が投稿可能な時間帯かチェック
  */
 function shouldPostNow() {
   const now = new Date();
   const hour = now.getHours();
-
-  // 休止時間は投稿しない
-  if (isQuietHours(hour)) {
-    return false;
-  }
-
-  return true;
+  // 7時〜24時（0時）の間を稼働時間とする
+  return hour >= SCHEDULE_CONFIG.QUIET_HOURS_END && hour < 24;
 }
 
 /**

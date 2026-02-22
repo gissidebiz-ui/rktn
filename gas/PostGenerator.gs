@@ -107,269 +107,284 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
 }
 
 /**
- * Threads 向け通常投稿を1件生成する
- * @param {string} trendContext - トレンドコンテキスト文字列
- * @param {number} index - 通常投稿の番号（0, 1, 2）
- * @returns {string} 生成された投稿テキスト
+ * 楽天 API URL から商品情報を取得するヘルパー関数
+ * @param {string} rakutenApiUrl - 楽天 API の完全な URL
+ * @returns {Object|null} 単一の商品情報、または null
  */
-function generateNormalPost(trendContext, index) {
-  const styles = [
-    "共感系（「わかる〜」「これ私だ」と思わせる日常の気づき）",
-    "有益系（明日から使える具体的なライフハックやコツ）",
-    "日常系（等身大の日常の一コマを切り取ったつぶやき）",
-  ];
-
-  const style = styles[index % styles.length];
-
-  const prompt = `あなたは Threads で ${TREND_CONFIG.TARGET_DEMO} 層に刺さる投稿を作るプロフェッショナルです。
-
-${trendContext}
-
-以下の条件で Threads 用の「${style}」投稿を1つだけ生成してください。
-
-■ 条件:
-・日本語のみ
-・${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内
-・Threads特有の「改行を多用した読みやすい構成」にする
-・投稿の最後に「問いかけ」を入れてエンゲージメントを促す
-・上記トレンドのキーワードや話題を自然に取り入れる
-・宣伝感ゼロの純粋なコンテンツ
-・絵文字は2つまで
-・ハッシュタグは2つまで（投稿末尾に配置）
-・見出しや「投稿文案：」などの装飾は不要。投稿本文だけを出力してください
-・「〇〇」「△△」などのプレースホルダは絶対に使わない`;
-
-  const text = callGeminiAPI(prompt);
-  return cleanPostText(text);
+function getRakutenProductByUrl(rakutenApiUrl) {
+  const products = fetchRakutenItemsByUrl(rakutenApiUrl);
+  return products.length > 0 ? products[0] : null;
 }
 
 /**
- * Threads 向けアフィリエイト投稿を1件生成する
- * @param {Object} product - 楽天商品情報
- * @param {string} trendContext - トレンドコンテキスト文字列
- * @returns {string} 生成された投稿テキスト（#PR 付き）
+ * 楽天キーワードで商品情報を検索するヘルパー関数
+ * @param {string} keyword - 検索キーワード
+ * @param {Object} trendData - トレンドデータ
+ * @returns {Object|null} 単一の商品情報、または null
  */
-function generateAffiliatePost(product, trendContext) {
-  // 商品名が長すぎる場合はカット
-  const safeName =
-    product.name.length > 60
-      ? product.name.substring(0, 60) + "..."
-      : product.name;
-
-  // 追加情報の組み立て
-  const infoLines = [];
-  if (product.price)
-    infoLines.push(`価格: ${Number(product.price).toLocaleString()}円`);
-  if (parseFloat(product.reviewAvg) > 0)
-    infoLines.push(`評価: ★${product.reviewAvg}（${product.reviewCount}件）`);
-  if (parseInt(product.pointRate) > 1)
-    infoLines.push(`ポイント: ${product.pointRate}倍`);
-
-  const prompt = `あなたは Threads で ${TREND_CONFIG.TARGET_DEMO} 層に向けて、自然にモノを紹介するのが上手いインフルエンサーです。
-
-${trendContext}
-
-以下の商品を、上記のトレンドの流れに乗せて「自然に」紹介する Threads 投稿を作ってください。
-
-【商品名】${safeName}
-【商品情報】${infoLines.join(" / ")}
-【商品URL】${product.url}
-
-【トレンド・文脈】
-    ${trendContext}
-
-    【制約事項】
-    1. 冒頭に必ず「商品の魅力やメリット（商品説明）」を具体的に2〜3行で記述してください。商品説明を省くのは厳禁です。
-    2. なぜ今この商品がおすすめなのか、ターゲット（30代・効率化好き）に刺さる理由を添えてください。
-    3. 最後に必ず商品URL (${product.url}) を含めてください。
-    4. 専門用語は避け、等身大の言葉で「これ、本当に便利…」と思わせるトーンにしてください。
-    5. 全体で${POST_CONFIG.AFFILIATE_POST_MIN_CHARS}文字〜${POST_CONFIG.AFFILIATE_POST_MAX_CHARS}文字程度にまとめてください（短すぎはNGです）。
-`;
-
-  let text = "";
-  let retries = 0;
-  while (retries < 3) {
-    text = callGeminiAPI(prompt);
-    text = cleanPostText(text);
-
-    // 文字数チェック (商品説明が含まれていれば自然と長くなるはず)
-    if (text.length >= POST_CONFIG.AFFILIATE_POST_MIN_CHARS) {
-      break;
-    }
-
-    Logger.log(
-      `[PostGenerator] アフィリエイト投稿が短すぎます（${text.length}文字）。再生成します。試行: ${retries + 1}`,
-    );
-    retries++;
-    Utilities.sleep(2000);
-  }
-
-  // #PR が含まれていない場合は追加
-  if (text && text.indexOf("#PR") === -1) {
-    text = text + "\n\n#PR";
-  }
-
-  // 商品 URL が含まれていない場合は追加
-  if (text && text.indexOf(product.url) === -1 && product.url) {
-    text = text + "\n\n" + product.url;
-  }
-
-  return text;
-}
-
-/**
- * 投稿テキストのクリーニング処理
- * @param {string} text - 生成された生テキスト
- * @returns {string} クリーニング後のテキスト
- */
-function cleanPostText(text) {
-  // AIの前置きや装飾を除去
-  text = text.replace(/^(投稿文案[：:]|本文[：:]|以下.*[：:])\s*/i, "");
-  text = text.replace(/^```[\s\S]*?```/g, "");
-  text = text.replace(/^【.*?】\s*/g, "");
-  text = text.replace(/^例\d*[：:]\s*/g, "");
-
-  // リテラルの \\n を実際の改行に変換
-  text = text.replace(/\\n/g, "\n");
-
-  // 3つ以上の連続改行を2つに圧縮
-  text = text.replace(/\n{3,}/g, "\n\n");
-
-  // 先頭・末尾の空白を除去
-  text = text.trim();
-
-  // プレースホルダの検出
-  const placeholderPattern = /\[.*?\]|【.*?】|〇{2,}|○{2,}|◯{2,}|△{2,}/;
-  const templateWords = [
-    "ブランド名",
-    "商品名を入れる",
-    "店舗名",
-    "〇〇",
-    "○○",
-  ];
-  if (
-    placeholderPattern.test(text) ||
-    templateWords.some(function (w) {
-      return text.indexOf(w) !== -1;
-    })
-  ) {
-    Logger.log("[PostGenerator] プレースホルダ検出 → 再生成が必要");
-    return "";
-  }
-
-  // 日本語チェック
-  if (!/[ぁ-んァ-ン一-龥]/.test(text)) {
-    Logger.log("[PostGenerator] 日本語未検出 → 再生成が必要");
-    return "";
-  }
-
-  return text;
-}
-
-/**
- * トレンド反映済み4件セットを生成する
- * @param {string} rakutenUrl - 楽天 API URL または検索キーワード
- * @returns {Object[]} [{type: 'normal'|'affiliate', text: string, scheduledTime: null}]
- */
-function generatePostSet(rakutenUrl) {
-  Logger.log("[PostGenerator] 4件セット生成を開始...");
-
-  // Step 1: トレンド解析
-  const trendData = analyzeTrends(false);
-  const trendContext = buildTrendContext(trendData);
-  Logger.log("[PostGenerator] トレンドコンテキスト取得完了");
-
-  // Step 2: 楽天から商品取得
+function searchRakutenProduct(keyword, trendData) {
   let products = [];
-  if (rakutenUrl && rakutenUrl.indexOf("http") === 0) {
-    products = fetchRakutenItemsByUrl(rakutenUrl);
-  } else if (rakutenUrl) {
-    // キーワードとして検索
-    const keyword =
-      trendData.keywords.length > 0
-        ? rakutenUrl +
+  if (keyword) {
+    const searchKeyword =
+      trendData && trendData.keywords.length > 0
+        ? keyword +
           " " +
           trendData.keywords[
             Math.floor(Math.random() * trendData.keywords.length)
           ]
-        : rakutenUrl;
-    products = fetchRakutenItems(keyword, 3);
+        : keyword;
+    products = fetchRakutenItems(searchKeyword, 3);
   }
 
-  if (products.length === 0) {
-    // トレンドキーワードで検索
+  if (products.length === 0 && trendData && trendData.keywords.length > 0) {
     const fallbackKeyword =
       trendData.keywords[
         Math.floor(Math.random() * trendData.keywords.length)
       ] || "おすすめ 人気";
     products = fetchRakutenItems(fallbackKeyword, 3);
+  } else if (products.length === 0) {
+    products = fetchRakutenItems("おすすめ 人気", 3);
   }
 
-  Logger.log(`[PostGenerator] 楽天商品 ${products.length}件取得`);
+  return products.length > 0
+    ? products[Math.floor(Math.random() * products.length)]
+    : null;
+}
 
-  // Step 3: 通常投稿3件を生成
-  const postSet = [];
+/**
+ * 1セット（4件）の投稿を生成する
+ */
+function generatePostSet(keywordOrUrl, offset = 0) {
+  const trendData = analyzeTrends();
+  const trendContext = buildTrendContext(trendData);
+  const posts = [];
+
+  // 通常投稿を 3件生成
   for (let i = 0; i < POST_CONFIG.NORMAL_POSTS_PER_SET; i++) {
     Logger.log(
       `[PostGenerator] 通常投稿 ${i + 1}/${POST_CONFIG.NORMAL_POSTS_PER_SET} 生成中...`,
     );
-
-    let text = "";
+    let postText = "";
     let retries = 0;
-    while (!text && retries < 3) {
-      text = generateNormalPost(trendContext, i);
-      retries++;
-      if (!text) {
-        Logger.log(`[PostGenerator] 通常投稿 ${i + 1} リトライ ${retries}/3`);
+    while (!postText && retries < 3) {
+      postText = generateNormalPost(trendData, offset + i);
+      if (!postText) {
+        Logger.log(
+          `[PostGenerator] 通常投稿 ${i + 1} リトライ ${retries + 1}/3`,
+        );
         Utilities.sleep(1000);
       }
+      retries++;
     }
-
-    postSet.push({
+    posts.push({
       type: "normal",
-      text: text || "（生成失敗）",
-      scheduledTime: null,
+      text: postText || `（通常投稿 ${i + 1} の生成に失敗しました）`,
+      isThreadStart: i === 0,
     });
-
-    // API レート制限対策
     Utilities.sleep(1500);
   }
 
-  // Step 4: アフィリエイト投稿1件を生成
-  Logger.log("[PostGenerator] アフィリエイト投稿生成中...");
-  const product =
-    products.length > 0
-      ? products[Math.floor(Math.random() * products.length)]
-      : null;
+  // アフィリエイト投稿を 1件生成
+  Logger.log("[PostGenerator] アフィリエイト投稿スロットの生成...");
+  let affPostText = "";
+  try {
+    const product =
+      keywordOrUrl.indexOf("http") === 0
+        ? getRakutenProductByUrl(keywordOrUrl)
+        : searchRakutenProduct(keywordOrUrl, trendData);
 
-  if (product) {
-    let affText = "";
-    let retries = 0;
-    while (!affText && retries < 3) {
-      affText = generateAffiliatePost(product, trendContext);
-      retries++;
-      if (!affText) {
-        Logger.log(`[PostGenerator] アフィリエイト投稿リトライ ${retries}/3`);
-        Utilities.sleep(1000);
+    if (product) {
+      let retries = 0;
+      while (!affPostText && retries < 3) {
+        affPostText = generateAffiliatePost(product, trendContext);
+        if (!affPostText) {
+          Logger.log(
+            `[PostGenerator] アフィリエイト投稿リトライ ${retries + 1}/3`,
+          );
+          Utilities.sleep(1000);
+        }
+        retries++;
+      }
+      if (affPostText) {
+        posts.push({
+          type: "affiliate",
+          text: affPostText,
+          isThreadStart: false,
+          productInfo: product,
+        });
       }
     }
+  } catch (e) {
+    Logger.log(`[PostGenerator] アフィリエイト生成失敗: ${e.message}`);
+  }
 
-    postSet.push({
-      type: "affiliate",
-      text: affText || "（生成失敗）",
-      scheduledTime: null,
-      productInfo: product,
+  // アフィリエイトが失敗した場合は通常投稿で埋めて構造を維持
+  if (!affPostText) {
+    Logger.log("[PostGenerator] フォールバック: 通常投稿を生成します");
+    let fallbackText = "";
+    let retries = 0;
+    while (!fallbackText && retries < 3) {
+      fallbackText = generateNormalPost(trendData, offset + 3); // 4件目のスタイル
+      if (!fallbackText) {
+        Logger.log(
+          `[PostGenerator] フォールバック通常投稿リトライ ${retries + 1}/3`,
+        );
+        Utilities.sleep(1000);
+      }
+      retries++;
+    }
+    posts.push({
+      type: "normal",
+      text: fallbackText || "（代替通常投稿の生成に失敗しました）",
+      isThreadStart: false,
     });
-  } else {
+  }
+
+  // 4件を超える場合は切り詰め（フォールバックの二重追加を防止）
+  if (posts.length > POST_CONFIG.TOTAL_POSTS_PER_SET) {
     Logger.log(
-      "[PostGenerator] 楽天商品が見つからないため、アフィリエイト投稿をスキップ",
+      `[PostGenerator] 生成数が${POST_CONFIG.TOTAL_POSTS_PER_SET}件を超過(${posts.length}件)。切り詰めます`,
     );
+    posts.length = POST_CONFIG.TOTAL_POSTS_PER_SET;
   }
 
   Logger.log(
-    `[PostGenerator] 4件セット生成完了 — 通常: ${POST_CONFIG.NORMAL_POSTS_PER_SET}件, アフィリエイト: ${product ? 1 : 0}件`,
+    `[PostGenerator] 4件セット確定: [${posts.map((p) => p.type).join(", ")}]`,
   );
-  return postSet;
+  return posts;
+}
+
+/**
+ * 通常投稿を生成
+ */
+function generateNormalPost(trendData, offset) {
+  const styles = [
+    "共感・あるある（読者が「わかる」と頷く内容）",
+    "有益な知恵袋（意外と知らないライフハック）",
+    "失敗からの学び（親近感と教訓）",
+    "時短・効率化テクニック（即実行できるコツ）",
+    "マインドセット（前向きになれる考え方）",
+    "ガジェット/アプリ紹介（使いこなし術）",
+    "質問・アンケート型（リプライを促す構成）",
+  ];
+  const style = styles[offset % styles.length];
+  const focusKeyword =
+    trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
+    "生産性";
+  const month = new Date().getMonth() + 1;
+
+  const prompt = `あなたはThreadsで「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
+
+【重要制約】
+・「テーマ：」や「生産性：」などのタイトル・見出しは一切不要です。冒頭から本文を開始してください。
+・「はい」「承知しました」などの会話文や前置きは厳禁です。
+・現在は${month}月です。必ずこの時期に相応しい内容にしてください。
+・投稿本文のみをそのまま出力してください。
+
+【今回の指示】
+・テーマ: 「${focusKeyword}」を自然な形で本文に組み込んでください。
+・スタイル: 「${style}」
+・ハッシュタグは2つまで。絵文字は控えめに（2つまで）。
+・読者に寄り添う「等身大」のトーンで、${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内で生成してください。
+・最後に思わず返信したくなるような「問いかけ」を入れてください。
+`;
+
+  return cleanPostText(callGeminiAPI(prompt));
+}
+
+/**
+ * アフィリエイト投稿を生成
+ */
+function generateAffiliatePost(product, trendContext) {
+  const month = new Date().getMonth() + 1;
+  const prompt = `あなたはThreadsで「${TREND_CONFIG.TARGET_DEMO}」層に向けて、本当に良いモノだけを勧めるキュレーターです。
+
+【紹介商品】
+・商品名: ${product.name}
+・URL: ${product.url}
+
+【文脈情報】
+${trendContext}
+
+【重要制約】
+・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めて書いてください。
+・冒頭に商品の具体的な魅力を2〜3行で記述してください（商品説明不足は厳禁）。
+・「PRであること」を隠さず、かつ自然なトーンで ${product.url} への誘導を行ってください。
+・全体で${POST_CONFIG.AFFILIATE_POST_MIN_CHARS}文字以上にしてください。
+・会話文、確認コメント、装飾（【 】などの多用）は不要です。本文のみ出力してください。
+`;
+
+  let text = "";
+  for (let r = 0; r < 2; r++) {
+    text = cleanPostText(callGeminiAPI(prompt));
+    if (text.length >= POST_CONFIG.AFFILIATE_POST_MIN_CHARS) break;
+    Utilities.sleep(1000);
+  }
+
+  if (text.indexOf("#PR") === -1) text += "\n\n#PR";
+  if (text.indexOf(product.url) === -1) text += "\n\n" + product.url;
+
+  return text;
+}
+
+/**
+ * クリーニング
+ */
+function cleanPostText(text) {
+  if (!text) return "";
+
+  // AI の前置き・挨拶・命令文を除去（複数パターンに対応）
+  let cleaned = text
+    // 「承知いたしました」「はい、」「かしこまりました」系の前置き
+    .replace(
+      /^(はい[、。！!]?\s*|承知いたしました[。！!]?\s*|承知しました[。！!]?\s*|かしこまりました[。！!]?\s*|了解しました[。！!]?\s*)/i,
+      "",
+    )
+    // 「以下に〜作成します/作成しました」系
+    .replace(
+      /^.*?(以下に|以下の|下記に).*?(作成します|作成しました|提案します|生成します|出力します)[。！!]?\s*/i,
+      "",
+    )
+    // 「**Threads投稿文案**」「**投稿文**」等のマークダウン見出し
+    .replace(/^\*{1,2}.*?(投稿文案|投稿文|Threads|文案).*?\*{1,2}\s*/gim, "")
+    // 「---」区切り線
+    .replace(/^-{3,}\s*/gm, "")
+    // コードブロック
+    .replace(/```[\s\S]*?```/g, "")
+    // マークダウンの見出し（# ）
+    .replace(/^#{1,6}\s+.*?\n/gm, "")
+    // 末尾の定型句
+    .replace(
+      /(\n|^)\s*(いかがでしょうか[？?]?$|ぜひ参考に|以上です|お役に立てれば|ご参考に|何かあれば).*$/gm,
+      "",
+    )
+    // エスケープされた改行
+    .replace(/\\n/g, "\n")
+    // 連続改行を2つまでに
+    .replace(/\n{3,}/g, "\n\n")
+    // テーマ名ラベルを削除
+    .replace(
+      /^.*?(テーマ|主題|productivity|話題|content|post|投稿文?案?)[:：]\s*/im,
+      "",
+    )
+    // 冒頭の【タイトル】を削除
+    .replace(/^【.*?】\s*/m, "")
+    // 冒頭の空行を除去
+    .replace(/^\s*\n+/, "")
+    .trim();
+
+  // プレースホルダ検知（[ ] や 〇〇 など）
+  const placeholderPattern = /\[.*?\]|〇{2,}|○{2,}|◯{2,}|△{2,}/;
+  if (
+    placeholderPattern.test(cleaned) ||
+    cleaned.includes("ブランド名") ||
+    cleaned.includes("〇〇")
+  ) {
+    Logger.log("[PostGenerator] プレースホルダを検出したため破棄");
+    return "";
+  }
+
+  return /[ぁ-んァ-ン一-龥]/.test(cleaned) ? cleaned : "";
 }
 
 // ================================

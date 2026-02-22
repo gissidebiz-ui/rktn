@@ -76,235 +76,196 @@ function getOrCreateSheet(sheetName) {
 }
 
 /**
- * スケジュール済み投稿セットをシートに書き込む
- * @param {Object[]} scheduledPosts - generateSchedule() の返却値
- */
-function writePendingPosts(scheduledPosts) {
-  const sheet = getOrCreateSheet(SHEET_NAME);
-  const now = new Date();
-  const nowStr = Utilities.formatDate(now, "Asia/Tokyo", "yyyy/MM/dd HH:mm:ss");
-
-  const rows = scheduledPosts.map(function (post) {
-    const timeStr = Utilities.formatDate(
-      post.scheduledTime,
-      "Asia/Tokyo",
-      "yyyy/MM/dd HH:mm",
-    );
-    return [
-      timeStr, // A: 予定時刻
-      post.type, // B: 投稿タイプ
-      post.text, // C: 投稿本文
-      "pending", // D: ステータス
-      "", // E: Threads ID
-      "", // F: 親Threads ID
-      nowStr, // G: 作成日時
-      "", // H: エラー
-    ];
-  });
-
-  if (rows.length > 0) {
-    const lastRow = sheet.getLastRow();
-    sheet.getRange(lastRow + 1, 1, rows.length, 8).setValues(rows);
-    Logger.log(`[SheetsManager] ${rows.length}件の予約を書き込みました`);
-  }
-}
-
-/**
- * 投稿予約シートをクリアする（ヘッダー以外）
+ * 投稿予約シートの初期化（高速版）
  */
 function clearPendingPosts() {
   const sheet = getOrCreateSheet(SHEET_NAME);
   const lastRow = sheet.getLastRow();
   if (lastRow > 1) {
-    // コンテンツだけでなく書式（背景色）もクリアしないと getLastRow が減らないため、
-    // 行ごと削除するのが最も確実です。
-    sheet.deleteRows(2, lastRow - 1);
-    SpreadsheetApp.flush(); // 即座に反映
-    Logger.log("[SheetsManager] 投稿予約シートを初期化しました（行削除）");
+    try {
+      sheet.deleteRows(2, lastRow - 1);
+      SpreadsheetApp.flush();
+      Logger.log(`[SheetsManager] ${lastRow - 1}件の予約をクリアしました`);
+    } catch (e) {
+      sheet.getRange(2, 1, lastRow, sheet.getLastColumn()).clearContent();
+      Logger.log(
+        `[SheetsManager] 行削除エラー (フォールバック実行): ${e.message}`,
+      );
+    }
+  } else {
+    Logger.log("[SheetsManager] 初期化不要（データなし）");
   }
 }
 
 /**
- * 次の未投稿（pending）かつ予定時刻を過ぎた投稿を取得する
- * @returns {Object|null} {row, scheduledTime, type, text} or null
+ * 予約情報を一括書き出し
+ */
+function writePendingPosts(posts) {
+  const sheet = getOrCreateSheet(SHEET_NAME);
+  const rows = posts.map((p) => {
+    const row = new Array(Object.keys(SHEET_COLUMNS).length).fill("");
+    row[SHEET_COLUMNS.SCHEDULED_TIME - 1] = p.scheduledTime;
+    row[SHEET_COLUMNS.POST_TYPE - 1] = p.type;
+    row[SHEET_COLUMNS.POST_TEXT - 1] = p.text;
+    row[SHEET_COLUMNS.STATUS - 1] = "pending";
+    row[SHEET_COLUMNS.CREATED_AT - 1] = new Date();
+    return row;
+  });
+  if (rows.length > 0) {
+    sheet
+      .getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length)
+      .setValues(rows);
+    Logger.log(`[SheetsManager] ${rows.length}件の予約を書き込みました`);
+  }
+}
+
+/**
+ * 日付文字列またはDateオブジェクトを確実にDateオブジェクトに変換
+ */
+function parseDate(val) {
+  if (val instanceof Date) return val;
+  if (typeof val === "string") {
+    // yyyy/MM/dd HH:mm 形式をサポート
+    return new Date(val.replace(/-/g, "/"));
+  }
+  return new Date(val);
+}
+
+/**
+ * 次に投稿すべき「単一の投稿」を取得
  */
 function getNextPendingPost() {
   const sheet = getOrCreateSheet(SHEET_NAME);
-  const lastRow = sheet.getLastRow();
-
-  if (lastRow <= 1) return null; // ヘッダー行のみ
-
+  const data = sheet.getDataRange().getValues();
   const now = new Date();
-  const data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
 
-  for (let i = 0; i < data.length; i++) {
+  for (let i = 1; i < data.length; i++) {
     const status = data[i][SHEET_COLUMNS.STATUS - 1];
-    if (status !== "pending") continue;
+    if (status !== "pending" && status !== "posting") continue;
 
-    const scheduledTimeStr = data[i][SHEET_COLUMNS.SCHEDULED_TIME - 1];
-    let scheduledTime;
-
-    if (scheduledTimeStr instanceof Date) {
-      scheduledTime = scheduledTimeStr;
-    } else {
-      scheduledTime = new Date(scheduledTimeStr);
-    }
-
-    // 予定時刻を過ぎていて、かつ休止時間でなければ投稿対象
-    if (scheduledTime <= now && shouldPostNow()) {
+    const sched = parseDate(data[i][SHEET_COLUMNS.SCHEDULED_TIME - 1]);
+    if (sched <= now && shouldPostNow()) {
       return {
-        row: i + 2, // 1-indexed + ヘッダー行分
-        scheduledTime: scheduledTime,
+        row: i + 1,
         type: data[i][SHEET_COLUMNS.POST_TYPE - 1],
         text: data[i][SHEET_COLUMNS.POST_TEXT - 1],
+        isThreadStart: i % 4 === 1, // 3:1 ループなら 2, 6, 10行目...が開始
       };
     }
   }
-
   return null;
 }
 
 /**
- * 同じセット（連続する pending 投稿）をまとめて取得する
- * スレッド形式投稿のため、連続する pending を一括取得
- * @returns {Object[]|null} 連続する pending 投稿の配列 or null
+ * 次に投稿すべき「スレッドセット」を取得
  */
 function getNextPendingPostSet() {
   const sheet = getOrCreateSheet(SHEET_NAME);
-  const lastRow = sheet.getLastRow();
-
-  if (lastRow <= 1) return null;
-
+  const data = sheet.getDataRange().getValues();
   const now = new Date();
-  const data = sheet.getRange(2, 1, lastRow - 1, 8).getValues();
+  const set = [];
 
-  const pendingSet = [];
-  let setStarted = false;
-
-  for (let i = 0; i < data.length; i++) {
+  for (let i = 1; i < data.length; i++) {
     const status = data[i][SHEET_COLUMNS.STATUS - 1];
-    const scheduledTimeStr = data[i][SHEET_COLUMNS.SCHEDULED_TIME - 1];
+    if (status !== "pending" && status !== "posting") continue;
 
-    let scheduledTime;
-    if (scheduledTimeStr instanceof Date) {
-      scheduledTime = scheduledTimeStr;
-    } else {
-      scheduledTime = new Date(scheduledTimeStr);
-    }
-
-    if (status === "pending" && scheduledTime <= now) {
-      setStarted = true;
-      pendingSet.push({
-        row: i + 2,
-        scheduledTime: scheduledTime,
+    const sched = parseDate(data[i][SHEET_COLUMNS.SCHEDULED_TIME - 1]);
+    if (sched <= now && shouldPostNow()) {
+      set.push({
+        row: i + 1,
         type: data[i][SHEET_COLUMNS.POST_TYPE - 1],
         text: data[i][SHEET_COLUMNS.POST_TEXT - 1],
       });
-    } else if (setStarted) {
-      // pending でない行に到達したらセット終了
+      if (set.length >= 4) break;
+    } else if (set.length > 0) {
       break;
     }
   }
-
-  return pendingSet.length > 0 ? pendingSet : null;
+  return set.length > 0 ? set : null;
 }
 
 /**
- * 投稿のステータスを更新する
- * @param {number} row - シートの行番号（1-indexed）
- * @param {string} status - 新しいステータス ('posted', 'error' 等)
- * @param {string} threadsId - Threads 投稿 ID
- * @param {string} parentThreadsId - 親投稿の Threads ID（リプライの場合）
- * @param {string} errorMsg - エラーメッセージ（エラー時のみ）
+ * 投稿ステータスの一括更新
  */
-function updatePostStatus(row, status, threadsId, parentThreadsId, errorMsg) {
+function updatePostStatusBatch(results) {
   const sheet = getOrCreateSheet(SHEET_NAME);
-
-  sheet.getRange(row, SHEET_COLUMNS.STATUS).setValue(status);
-
-  if (threadsId) {
-    sheet.getRange(row, SHEET_COLUMNS.THREADS_ID).setValue(threadsId);
-  }
-
-  if (parentThreadsId) {
+  results.forEach((res) => {
     sheet
-      .getRange(row, SHEET_COLUMNS.PARENT_THREADS_ID)
-      .setValue(parentThreadsId);
-  }
+      .getRange(res.row, SHEET_COLUMNS.STATUS)
+      .setValue(res.success ? "posted" : "error");
 
-  if (errorMsg) {
-    sheet.getRange(row, SHEET_COLUMNS.ERROR_MSG).setValue(errorMsg);
-  }
+    if (res.success) {
+      sheet.getRange(res.row, SHEET_COLUMNS.THREADS_ID).setValue(res.postId);
+      if (res.parentId)
+        sheet
+          .getRange(res.row, SHEET_COLUMNS.PARENT_THREADS_ID)
+          .setValue(res.parentId);
+    } else {
+      sheet.getRange(res.row, SHEET_COLUMNS.ERROR_MSG).setValue(res.error);
+    }
 
-  // ステータスに応じて背景色を変更
-  const cell = sheet.getRange(row, SHEET_COLUMNS.STATUS);
-  if (status === "posted") {
-    cell.setBackground("#d4edda"); // 薄緑
-  } else if (status === "error") {
-    cell.setBackground("#f8d7da"); // 薄赤
-  } else if (status === "posting") {
-    cell.setBackground("#fff3cd"); // 薄黄
-  }
+    // ステータスに応じて背景色を変更
+    const cell = sheet.getRange(res.row, SHEET_COLUMNS.STATUS);
+    if (res.success) {
+      cell.setBackground("#d4edda"); // 薄緑
+    } else {
+      cell.setBackground("#f8d7da"); // 薄赤
+    }
+  });
 }
 
 /**
- * 実行ログを記録する
- * @param {string} action - 実行したアクション
- * @param {string} result - 結果 ('success', 'error')
- * @param {string} detail - 詳細情報
+ * 楽天 API: キーワード検索
  */
-function writeLog(action, result, detail) {
-  const sheet = getOrCreateSheet(LOG_SHEET_NAME);
-  const now = Utilities.formatDate(
-    new Date(),
-    "Asia/Tokyo",
-    "yyyy/MM/dd HH:mm:ss",
-  );
-
-  const lastRow = sheet.getLastRow();
-  sheet
-    .getRange(lastRow + 1, 1, 1, 4)
-    .setValues([[now, action, result, detail]]);
-
-  // 結果に応じて背景色
-  const resultCell = sheet.getRange(lastRow + 1, 3);
-  if (result === "success") {
-    resultCell.setBackground("#d4edda");
-  } else if (result === "error") {
-    resultCell.setBackground("#f8d7da");
-  }
+function fetchRakutenItems(keyword, hits = 3) {
+  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?applicationId=${CONFIG.RAKUTEN_APP_ID}&affiliateId=${CONFIG.RAKUTEN_AFFILIATE_ID}&keyword=${encodeURIComponent(keyword)}&hits=${hits}&formatVersion=2`;
+  const res = UrlFetchApp.fetch(url);
+  const data = JSON.parse(res.getContentText());
+  return (data.Items || []).map((item) => ({
+    name: item.itemName,
+    url: item.affiliateUrl || item.itemUrl,
+    price: item.itemPrice,
+  }));
 }
 
 /**
- * 統計情報を取得する
- * @returns {Object} {total, pending, posted, error}
+ * 楽天 API: URL から取得
+ */
+function fetchRakutenItemsByUrl(itemUrl) {
+  const itemId = itemUrl.match(/item\/([^/]+)\/([^/]+)/);
+  if (!itemId) return [];
+  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?applicationId=${CONFIG.RAKUTEN_APP_ID}&affiliateId=${CONFIG.RAKUTEN_AFFILIATE_ID}&itemCode=${itemId[1]}:${itemId[2]}&formatVersion=2`;
+  const res = UrlFetchApp.fetch(url);
+  const data = JSON.parse(res.getContentText());
+  return (data.Items || []).map((item) => ({
+    name: item.itemName,
+    url: item.affiliateUrl || item.itemUrl,
+    price: item.itemPrice,
+  }));
+}
+
+/**
+ * 実行ログの書き込み
+ */
+function writeLog(action, status, message) {
+  const sheet = getOrCreateSheet(LOG_SHEET_NAME);
+  sheet.appendRow([new Date(), action, status, message]);
+}
+
+/**
+ * 統計データの取得
  */
 function getPostStats() {
   const sheet = getOrCreateSheet(SHEET_NAME);
-  const lastRow = sheet.getLastRow();
-
-  if (lastRow <= 1) return { total: 0, pending: 0, posted: 0, error: 0 };
-
-  const statuses = sheet
-    .getRange(2, SHEET_COLUMNS.STATUS, lastRow - 1, 1)
-    .getValues();
-
-  let pending = 0,
-    posted = 0,
-    error = 0;
-  statuses.forEach(function (row) {
-    const s = row[0];
-    if (s === "pending") pending++;
-    else if (s === "posted") posted++;
-    else if (s === "error") error++;
-  });
-
-  return {
-    total: lastRow - 1,
-    pending: pending,
-    posted: posted,
-    error: error,
-  };
+  const data = sheet.getDataRange().getValues();
+  const summary = { total: 0, pending: 0, posted: 0, error: 0 };
+  for (let i = 1; i < data.length; i++) {
+    // Start from 1 to skip header
+    const status = data[i][SHEET_COLUMNS.STATUS - 1];
+    summary.total++;
+    if (summary[status] !== undefined) summary[status]++;
+  }
+  return summary;
 }
 
 // ================================

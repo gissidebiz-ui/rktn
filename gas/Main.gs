@@ -12,8 +12,70 @@
  *   - initialSetup()         — 初回セットアップ
  *   - generateAndSchedule()  — 手動で4件セット生成
  *   - runFullTest()          — フルテスト実行
+ *   - onOpen()               — カスタムメニューの追加
  * ============================================================
  */
+
+/**
+ * スプレッドシートを開いたときにメニューを追加
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu("🧵 Threads 自動投稿")
+    .addItem("📝 セット生成（トレンド自動）", "menuGenerateTrends")
+    .addItem("🔗 セット生成（楽天URL指定）", "menuGenerateByUrl")
+    .addSeparator()
+    .addItem("🚀 スレッド一括投稿", "menuPublishThreads")
+    .addItem("📊 統計表示", "showStats")
+    .addSeparator()
+    .addItem("⚙️ トリガーを再設定", "resetTriggers")
+    .addToUi();
+}
+
+/**
+ * メニュー用: トレンド自動生成
+ */
+function menuGenerateTrends() {
+  generateAndSchedule();
+  SpreadsheetApp.getActiveSpreadsheet().toast(
+    "トレンドからの予約生成が完了しました",
+    "完了",
+  );
+}
+
+/**
+ * メニュー用: 楽天URL指定生成
+ */
+function menuGenerateByUrl() {
+  const ui = SpreadsheetApp.getUi();
+  const res = ui.prompt(
+    "楽天商品URL指定",
+    "対象商品のURLを入力してください:",
+    ui.ButtonSet.OK_CANCEL,
+  );
+  if (res.getSelectedButton() === ui.Button.OK) {
+    const url = res.getResponseText();
+    if (url) {
+      generateAndSchedule(url);
+      ui.alert("指定されたURLからの予約生成が完了しました。");
+    }
+  }
+}
+
+/**
+ * メニュー用: スレッド一括投稿 (未投稿分をすべてスレッド化)
+ */
+function menuPublishThreads() {
+  const set = getNextPendingPostSet();
+  if (!set) {
+    SpreadsheetApp.getUi().alert("投稿待ちのセットが見つかりませんでした。");
+    return;
+  }
+
+  const results = publishPostSetAsThread(set);
+  updatePostStatusBatch(results);
+  SpreadsheetApp.getUi().alert("スレッド形式での一括投稿が完了しました。");
+}
 
 /**
  * ============================================================
@@ -73,7 +135,29 @@ function initialSetup() {
  */
 function setupTriggers() {
   const triggers = ScriptApp.getProjectTriggers();
-  const existingFunctions = triggers.map(function (t) {
+
+  // 同名トリガーの重複を検出し、重複があれば削除してから再登録
+  const targetFunctions = ["generateAndSchedule", "processScheduledPosts"];
+
+  targetFunctions.forEach(function (funcName) {
+    const existing = triggers.filter(function (t) {
+      return t.getHandlerFunction() === funcName;
+    });
+
+    // 2つ以上の重複がある場合はすべて削除してから再登録する
+    if (existing.length > 1) {
+      Logger.log(
+        `⚠️ 「${funcName}」のトリガーが${existing.length}件重複しています。全削除して再登録します`,
+      );
+      existing.forEach(function (t) {
+        ScriptApp.deleteTrigger(t);
+      });
+    }
+  });
+
+  // 削除後のトリガーリストを再取得
+  const currentTriggers = ScriptApp.getProjectTriggers();
+  const existingFunctions = currentTriggers.map(function (t) {
     return t.getHandlerFunction();
   });
 
@@ -124,14 +208,18 @@ function removeTriggers() {
  * @param {string} rakutenUrl - 楽天 API URL（省略時はトレンドキーワードで自動検索）
  */
 function generateAndSchedule(rakutenUrl) {
+  // トリガーから呼ばれた場合、引数に event オブジェクトが渡されるため除外
+  if (rakutenUrl && typeof rakutenUrl !== "string") {
+    rakutenUrl = null;
+  }
+
   Logger.log("=== 1日分（16件）生成＆スケジュール開始 ===");
   const startTime = Date.now();
 
   // スプレッドシートを初期化（前日の残りなどをクリア）
   clearPendingPosts();
 
-  // accounts.yaml の設定に相当するデフォルトのトレンドキーワード取得
-  // 季節ネタの修正を即時反映させるため、初回は強制リフレッシュ
+  // トレンドキーワード取得（季節ネタの修正を即時反映させるため、初回は強制リフレッシュ）
   const allPostObjects = [];
   const trendData = analyzeTrends(true);
 
@@ -150,7 +238,8 @@ function generateAndSchedule(rakutenUrl) {
       }
 
       // Step 2: 4件セット生成
-      const postSet = generatePostSet(currentRakutenUrl);
+      const offset = i * 4; // 1日全体の通し番号としてオフセットを計算
+      const postSet = generatePostSet(currentRakutenUrl, offset);
 
       if (postSet.length > 0) {
         // スケジュール前の生投稿オブジェクトを溜める
@@ -167,20 +256,21 @@ function generateAndSchedule(rakutenUrl) {
       return;
     }
 
-    // Step 3: 全16件（4セット分）をまとめてスケジューリング
-    // 07:00から1時間おきに配置すると、16件目は22:00（またはジャンプ考慮で23:00代）に収まります。
-    let startTimeForSchedule = new Date();
-    startTimeForSchedule.setHours(7, 0, 0, 0); // 常に朝7時開始として計算
-
-    // 手動実行などで既に7:30を過ぎている場合は、翌日のスケジュールとして予約する
-    //（そうしないと過去の時刻として一気に投稿されてしまうため）
-    const now = new Date();
-    if (now.getTime() > startTimeForSchedule.getTime() + 30 * 60 * 1000) {
-      startTimeForSchedule.setDate(startTimeForSchedule.getDate() + 1);
+    // 最大16件に制限（万一超えた場合に切り詰め）
+    const maxPosts = POST_CONFIG.TOTAL_POSTS_PER_SET * 4; // 4件 × 4セット = 16件
+    if (allPostObjects.length > maxPosts) {
       Logger.log(
-        "[Main] 現在時刻が7:30を過ぎているため、明日のスケジュールとして予約します",
+        `[Main] 投稿数が${maxPosts}件を超えています（${allPostObjects.length}件）。${maxPosts}件に切り詰めます`,
       );
+      allPostObjects.length = maxPosts;
     }
+
+    // Step 3: 全16件（4セット分）をまとめてスケジューリング
+    // 現在時刻を基準に、稼働時間内でのスケジュールを生成する
+    const startTimeForSchedule = getInitialStartTime();
+    Logger.log(
+      `[Main] スケジュール開始基準時刻: ${Utilities.formatDate(startTimeForSchedule, "Asia/Tokyo", "yyyy/MM/dd HH:mm")}`,
+    );
 
     const allScheduledPosts = generateSchedule(
       allPostObjects,
@@ -222,176 +312,62 @@ function generateAndSchedule(rakutenUrl) {
  * 予定時刻を過ぎた未投稿を検出し、Threads API で投稿を実行。
  */
 function processScheduledPosts() {
-  // 休止時間チェック
-  if (!shouldPostNow()) {
-    return; // 静かに終了
-  }
+  if (!shouldPostNow()) return;
 
   try {
-    // 次の未投稿を取得
-    const pendingPost = getNextPendingPost();
-
-    if (!pendingPost) {
-      return; // 投稿すべきものがない
-    }
-
-    Logger.log(`[Main] 投稿実行: 行${pendingPost.row} [${pendingPost.type}]`);
-
-    // ステータスを「投稿中」に更新
-    updatePostStatus(pendingPost.row, "posting", "", "", "");
-
-    // Threads API で投稿
-    const postId = publishTextPost(pendingPost.text);
-
-    // 成功 → ステータス更新
-    updatePostStatus(pendingPost.row, "posted", postId, "", "");
-    writeLog(
-      "投稿実行",
-      "success",
-      `行${pendingPost.row} ${pendingPost.type} → ${postId}`,
-    );
-
-    Logger.log(`[Main] 投稿成功: ${postId}`);
-  } catch (e) {
-    Logger.log(`[Main] 投稿実行エラー: ${e.message}`);
-
-    // エラー → ステータス更新
-    try {
-      const pendingPost = getNextPendingPost();
-      if (pendingPost) {
-        updatePostStatus(pendingPost.row, "error", "", "", e.message);
+    const post = getNextPendingPost();
+    if (!post) {
+      // 動作確認のため、1時間に1回程度は「待機中」ログを出す（毎分だと多すぎるため、分が0の時のみ）
+      if (new Date().getMinutes() === 0) {
+        Logger.log("[Main] 投稿待機中（対象なし）");
+        writeLog("定期投稿チェック", "idle", "投稿予約はありません");
       }
-    } catch (innerE) {
-      // ステータス更新自体がエラーの場合は無視
-    }
-
-    writeLog("投稿実行", "error", e.message);
-  }
-}
-
-/**
- * ============================================================
- * 手動実行: スレッド形式で一括投稿
- * ============================================================
- * スプレッドシートの pending 投稿をまとめてスレッド形式で投稿する。
- * processScheduledPosts が1件ずつ投稿するのに対し、
- * こちらは連続する pending をスレッド（親+リプライ）として投稿する。
- */
-function postAsThread() {
-  Logger.log("=== スレッド形式一括投稿開始 ===");
-
-  if (!shouldPostNow()) {
-    Logger.log("現在は休止時間です。");
-    return;
-  }
-
-  try {
-    const pendingSet = getNextPendingPostSet();
-
-    if (!pendingSet || pendingSet.length === 0) {
-      Logger.log("投稿すべきセットがありません。");
       return;
     }
 
-    Logger.log(`${pendingSet.length}件のセットをスレッド形式で投稿します`);
+    Logger.log(`[Main] 単一投稿を実行: ${post.row}行目 「${post.type}」`);
 
-    // ステータスを一括で「投稿中」に更新
-    pendingSet.forEach(function (post) {
-      updatePostStatus(post.row, "posting", "", "", "");
-    });
+    // 投稿実行
+    const postId = publishTextPost(post.text);
 
-    // スレッド形式で投稿
-    const results = publishPostSetAsThread(pendingSet);
+    // 結果を反映
+    updatePostStatusBatch([
+      {
+        row: post.row,
+        success: true,
+        postId: postId,
+      },
+    ]);
 
-    // 結果をシートに反映
-    let parentId = "";
-    results.forEach(function (result, i) {
-      const post = pendingSet[i];
-      if (result.success) {
-        if (i === 0) parentId = result.postId;
-        updatePostStatus(
-          post.row,
-          "posted",
-          result.postId,
-          i > 0 ? parentId : "",
-          "",
-        );
-      } else {
-        updatePostStatus(post.row, "error", "", "", result.error);
-      }
-    });
-
-    const successCount = results.filter(function (r) {
-      return r.success;
-    }).length;
-    writeLog(
-      "スレッド投稿",
-      "success",
-      `${successCount}/${results.length}件成功`,
-    );
+    writeLog("定期投稿実行", "success", `${post.row}行目を投稿しました`);
   } catch (e) {
-    Logger.log(`[Main] スレッド投稿エラー: ${e.message}`);
-    writeLog("スレッド投稿", "error", e.message);
+    Logger.log(`[Main] 投稿プロセスエラー: ${e.message}`);
+    writeLog("定期投稿プロセス", "error", e.message);
   }
 }
 
 /**
- * ============================================================
- * 楽天 URL 指定でセット生成（スプレッドシートのカスタムメニューから呼ぶ場合）
- * ============================================================
- */
-function generateWithRakutenUrl() {
-  const ui = SpreadsheetApp.getUi();
-  const result = ui.prompt(
-    "楽天 URL / キーワード入力",
-    "楽天 API URL またはキーワードを入力してください（空欄でトレンド自動検索）:",
-    ui.ButtonSet.OK_CANCEL,
-  );
-
-  if (result.getSelectedButton() !== ui.Button.OK) return;
-
-  const input = result.getResponseText().trim();
-  generateAndSchedule(input || undefined);
-
-  ui.alert(
-    "完了",
-    "投稿セットの生成とスケジュール書き込みが完了しました。\n「投稿予約」シートを確認してください。",
-    ui.ButtonSet.OK,
-  );
-}
-
-/**
- * スプレッドシートにカスタムメニューを追加
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu("🧵 Threads 自動投稿")
-    .addItem("📝 セット生成（トレンド自動）", "generateAndSchedule")
-    .addItem("🔗 セット生成（楽天URL指定）", "generateWithRakutenUrl")
-    .addSeparator()
-    .addItem("🚀 スレッド一括投稿", "postAsThread")
-    .addItem("📊 統計表示", "showStats")
-    .addSeparator()
-    .addItem("⚙️ 初回セットアップ", "initialSetup")
-    .addItem("🔄 トリガー再設定", "setupTriggers")
-    .addItem("🗑️ トリガー全削除", "removeTriggers")
-    .addToUi();
-}
-
-/**
- * 統計情報をダイアログで表示
+ * 統計情報の表示
  */
 function showStats() {
   const stats = getPostStats();
   const ui = SpreadsheetApp.getUi();
   ui.alert(
-    "📊 投稿統計",
-    `合計: ${stats.total}件\n` +
-      `待機中 (pending): ${stats.pending}件\n` +
-      `投稿済 (posted): ${stats.posted}件\n` +
-      `エラー (error): ${stats.error}件`,
-    ui.ButtonSet.OK,
+    `📊 運用統計\n\n` +
+      `・合計投稿数: ${stats.total}\n` +
+      `・成功: ${stats.posted}\n` +
+      `・未処理: ${stats.pending}\n` +
+      `・エラー: ${stats.error}\n\n` +
+      `最終更新: ${new Date().toLocaleString()}`,
   );
+}
+
+// ------------------------------------------------------------
+// トリガー再設定用（必要に応じて使用）
+// ------------------------------------------------------------
+function resetTriggers() {
+  removeTriggers();
+  setupTriggers();
 }
 
 /**
