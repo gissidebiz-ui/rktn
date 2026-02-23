@@ -8,7 +8,8 @@
  * 【シートコピー後のセットアップ】
  * 1. GAS エディタ → プロジェクトの設定 → スクリプトプロパティ
  * 2. 以下のキーを登録（アカウントごとに固有値を設定）:
- *    - GEMINI_API_KEY, THREADS_ACCESS_TOKEN, THREADS_USER_ID, RAKUTEN_APP_ID
+ *    - GEMINI_API_KEY, RAKUTEN_APP_ID
+ *    - TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
  * ============================================================
  */
 
@@ -22,17 +23,31 @@ const CONFIG = {
       ""
     );
   },
-  get THREADS_ACCESS_TOKEN() {
+  get TWITTER_API_KEY() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("TWITTER_API_KEY") ||
+      ""
+    );
+  },
+  get TWITTER_API_SECRET() {
     return (
       PropertiesService.getScriptProperties().getProperty(
-        "THREADS_ACCESS_TOKEN",
+        "TWITTER_API_SECRET",
       ) || ""
     );
   },
-  get THREADS_USER_ID() {
+  get TWITTER_ACCESS_TOKEN() {
     return (
-      PropertiesService.getScriptProperties().getProperty("THREADS_USER_ID") ||
-      ""
+      PropertiesService.getScriptProperties().getProperty(
+        "TWITTER_ACCESS_TOKEN",
+      ) || ""
+    );
+  },
+  get TWITTER_ACCESS_SECRET() {
+    return (
+      PropertiesService.getScriptProperties().getProperty(
+        "TWITTER_ACCESS_SECRET",
+      ) || ""
     );
   },
   get RAKUTEN_APP_ID() {
@@ -102,9 +117,19 @@ const SCHEDULE_CONFIG = {
 // 投稿生成設定
 // ================================
 const POST_CONFIG = {
-  NORMAL_POST_MAX_CHARS: 500,
-  AFFILIATE_POST_MIN_CHARS: 150,
-  AFFILIATE_POST_MAX_CHARS: 500,
+  // ターゲットプラットフォーム ('threads' または 'twitter')
+  // ※ ここを書き換えることで、文字数制限やプロンプトのトーンが自動で切り替わります
+  PLATFORM: "twitter",
+
+  get NORMAL_POST_MAX_CHARS() {
+    return this.PLATFORM === "twitter" ? 130 : 500;
+  },
+  get AFFILIATE_POST_MIN_CHARS() {
+    return this.PLATFORM === "twitter" ? 50 : 150;
+  },
+  get AFFILIATE_POST_MAX_CHARS() {
+    return this.PLATFORM === "twitter" ? 100 : 500;
+  },
 
   // 黄金比（通常 3 : アフィリエイト 1）
   NORMAL_POSTS_PER_SET: 3,
@@ -126,10 +151,16 @@ const GEMINI_CONFIG = {
   RETRY_DELAY_MS: 1000,
 };
 
-const THREADS_API_CONFIG = {
-  BASE_URL: "https://graph.threads.net/v1.0",
-  PUBLISH_WAIT_MS: 5000,
-  REPLY_DELAY_MS: 3000,
+// Threads API 設定（互換性のため残存）
+// const THREADS_API_CONFIG = {
+//   BASE_URL: "https://graph.threads.net/v1.0",
+//   PUBLISH_WAIT_MS: 5000,
+//   REPLY_DELAY_MS: 3000,
+// };
+
+const TWITTER_API_CONFIG = {
+  TWEET_ENDPOINT: "https://api.twitter.com/2/tweets",
+  POST_INTERVAL_MS: 3000, // 投稿間の待機時間（レート制限対策）
 };
 
 const RAKUTEN_API_CONFIG = {
@@ -147,8 +178,8 @@ const SHEET_COLUMNS = {
   POST_TYPE: 2,
   POST_TEXT: 3,
   STATUS: 4,
-  THREADS_ID: 5,
-  PARENT_THREADS_ID: 6,
+  TWEET_ID: 5,
+  PARENT_TWEET_ID: 6,
   CREATED_AT: 7,
   ERROR_MSG: 8,
   // --- 分析用カラム ---

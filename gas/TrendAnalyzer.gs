@@ -11,41 +11,63 @@
  * Gemini API 呼び出し（汎用）
  */
 function callGeminiAPI(prompt) {
-  const url = `${GEMINI_CONFIG.BASE_URL}${GEMINI_CONFIG.MODEL}:generateContent?key=${CONFIG.GEMINI_API_KEY}`;
+  const apiKey = CONFIG.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "[Gemini] APIキーが設定されていません。スクリプトプロパティを確認してください。",
+    );
+  }
+
+  const url = `${GEMINI_CONFIG.BASE_URL}${GEMINI_CONFIG.MODEL}:generateContent?key=${apiKey}`;
   const payload = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.9, maxOutputTokens: 2048 },
   };
 
+  let lastError = "";
+
   for (let attempt = 1; attempt <= GEMINI_CONFIG.MAX_RETRIES; attempt++) {
     try {
-      Logger.log(
-        `[Gemini] 呼び出し開始: ${url.replace(/key=.*$/, "key=API_KEY_HIDDEN")}`,
-      );
       const response = UrlFetchApp.fetch(url, {
         method: "post",
         contentType: "application/json",
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
       });
+      const statusCode = response.getResponseCode();
       const content = response.getContentText();
       const json = JSON.parse(content);
-      if (json.candidates && json.candidates[0]?.content?.parts[0]?.text) {
+
+      if (
+        statusCode === 200 &&
+        json.candidates &&
+        json.candidates[0]?.content?.parts[0]?.text
+      ) {
         return json.candidates[0].content.parts[0].text.trim();
       } else {
-        Logger.log(
-          `[Gemini] 返答エラー (${response.getResponseCode()}): ${content}`,
-        );
+        lastError = `HTTP ${statusCode}: ${content}`;
+        Logger.log(`[Gemini] エラー (${statusCode}): ${content}`);
+
+        // セーフティなどの理由で拒否された場合の詳細把握用
+        if (json.promptFeedback) {
+          Logger.log(
+            `[Gemini] フィードバック: ${JSON.stringify(json.promptFeedback)}`,
+          );
+        }
       }
     } catch (e) {
+      lastError = e.message;
       Logger.log(`[Gemini] リトライ ${attempt} 失敗: ${e.message}`);
-      if (attempt < GEMINI_CONFIG.MAX_RETRIES)
-        Utilities.sleep(GEMINI_CONFIG.RETRY_DELAY_MS);
+    }
+
+    if (attempt < GEMINI_CONFIG.MAX_RETRIES) {
+      Utilities.sleep(GEMINI_CONFIG.RETRY_DELAY_MS);
     }
   }
-  throw new Error(
-    "Gemini API の呼び出しに失敗しました。詳細な理由はログを確認してください。",
-  );
+
+  const finalMessage = `Gemini API 呼び出し失敗: ${lastError}`;
+  writeLog("Gemini API", "error", finalMessage);
+  throw new Error(finalMessage);
 }
 
 /**

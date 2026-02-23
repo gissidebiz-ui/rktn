@@ -3,7 +3,7 @@
  * PostGenerator.gs — 投稿生成モジュール（25%ルール）
  * ============================================================
  * トレンド解析結果を反映し、通常投稿3件＋アフィリエイト投稿1件の
- * 「4件セット」を生成します。Threads 特有のフォーマットを適用。
+ * 「4件セット」を生成します。X（Twitter）の全角140文字制限に対応。
  * ============================================================
  */
 
@@ -78,6 +78,7 @@ function fetchRakutenItems(keyword, hits) {
         reviewAvg: String(i.reviewAverage || "0"),
         reviewCount: String(i.reviewCount || "0"),
         pointRate: String(i.pointRate || "1"),
+        caption: i.itemCaption || "",
         imageUrl:
           i.mediumImageUrls && i.mediumImageUrls[0]
             ? i.mediumImageUrls[0].imageUrl
@@ -204,6 +205,7 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
         reviewAvg: String(i.reviewAverage || "0"),
         reviewCount: String(i.reviewCount || "0"),
         pointRate: String(i.pointRate || "1"),
+        caption: i.itemCaption || "",
         imageUrl: "",
       };
     });
@@ -339,7 +341,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
 
   // アフィリエイト投稿を 1件生成
   Logger.log("[PostGenerator] アフィリエイト投稿スロットの生成...");
-  let affPostText = "";
+  let affSuccess = false;
   try {
     const product =
       keywordOrUrl.indexOf("http") === 0
@@ -347,9 +349,16 @@ function generatePostSet(keywordOrUrl, offset = 0) {
         : searchRakutenProduct(keywordOrUrl, trendData);
 
     if (product) {
+      let affPostText = "";
       let retries = 0;
       while (!affPostText && retries < 3) {
-        affPostText = generateAffiliatePost(product, trendContext);
+        try {
+          affPostText = generateAffiliatePost(product, trendContext);
+        } catch (genErr) {
+          Logger.log(
+            `[PostGenerator] アフィリエイト生成エラー: ${genErr.message}`,
+          );
+        }
         if (!affPostText) {
           Logger.log(
             `[PostGenerator] アフィリエイト投稿リトライ ${retries + 1}/3`,
@@ -365,6 +374,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
           isThreadStart: false,
           productInfo: product,
         });
+        affSuccess = true;
       }
     } else {
       Logger.log("[PostGenerator] !! アフィリエイト商品の取得に失敗しました。");
@@ -375,21 +385,34 @@ function generatePostSet(keywordOrUrl, offset = 0) {
     );
   }
 
-  if (!affPostText) {
+  // アフィリエイトが失敗した場合、通常投稿で確実に4件目を埋める
+  if (!affSuccess) {
     Logger.log(
       "[PostGenerator] !! アフィリエイト生成が要件を満たさなかったため、通常投稿でフォールバックします。",
     );
     let fallbackText = "";
-    let retries = 0;
-    while (!fallbackText && retries < 3) {
-      fallbackText = generateNormalPost(trendData, offset + 3); // 4件目のスタイル
-      if (!fallbackText) {
-        Logger.log(
-          `[PostGenerator] フォールバック通常投稿リトライ ${retries + 1}/3`,
-        );
-        Utilities.sleep(1000);
+    try {
+      let retries = 0;
+      while (!fallbackText && retries < 3) {
+        try {
+          fallbackText = generateNormalPost(trendData, offset + 3);
+        } catch (fbErr) {
+          Logger.log(
+            `[PostGenerator] フォールバック生成エラー: ${fbErr.message}`,
+          );
+        }
+        if (!fallbackText) {
+          Logger.log(
+            `[PostGenerator] フォールバック通常投稿リトライ ${retries + 1}/3`,
+          );
+          Utilities.sleep(1000);
+        }
+        retries++;
       }
-      retries++;
+    } catch (e) {
+      Logger.log(
+        `[PostGenerator] フォールバック処理中にエラーが発生しました: ${e.message}`,
+      );
     }
     posts.push({
       type: "normal",
@@ -432,26 +455,42 @@ function generateNormalPost(trendData, offset) {
   const month = new Date().getMonth() + 1;
   const successfulPostsContext = buildSuccessfulPostsContext();
 
-  const prompt = `あなたはThreadsで「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
+  const platformName =
+    POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
+  const prompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
 
 【重要制約】
 ・「テーマ：」や「生産性：」などのタイトル・見出しは一切不要です。冒頭から本文を開始してください。
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
 ・現在は${month}月です。必ずこの時期に相応しい内容にしてください。
 ・投稿本文のみをそのまま出力してください。
-・「〜ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
-・一人称（自分自身の呼び方）は必ず「僕」で統一してください。「私」や「俺」は使用しないでください。
+・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
+・一人称（自分自身の呼び方）は必ず「僕」で統一してください。
+
+【★文字数制限【厳守】★】
+・合計で全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内に収めてください。
+・短くインパクトのある文章を心がけてください。
 
 【今回の指示】
 ・テーマ: 「${focusKeyword}」を自然な形で本文に組み込んでください。
 ・スタイル: 「${style}」
-・ハッシュタグは2つまで。絵文字は控えめに（2つまで）。
-・読者に寄り添う「等身大」のトーンで、${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内で生成してください。
-・読者に寄り添う「等身大」のトーンで、${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内で生成してください。
+・ハッシュタグは1個のみ。絵文字は控えめに（1つまで）。
+・読者に寄り添う「等身大」のトーンで、${platformName}らしいテンポ感のある文章を生成してください。
 ${successfulPostsContext}
 `;
 
-  return cleanPostText(callGeminiAPI(prompt));
+  let text = cleanPostText(callGeminiAPI(prompt));
+
+  // 最終文字数チェックと切り詰めロジック
+  const max = POST_CONFIG.NORMAL_POST_MAX_CHARS;
+  if (text.length > max) {
+    Logger.log(
+      `[PostGenerator] 通常投稿が制限を超過(${text.length}/${max})。切り詰めます。`,
+    );
+    text = text.substring(0, max - 3) + "...";
+  }
+
+  return text;
 }
 
 /**
@@ -460,37 +499,70 @@ ${successfulPostsContext}
 function generateAffiliatePost(product, trendContext) {
   const month = new Date().getMonth() + 1;
   const successfulPostsContext = buildSuccessfulPostsContext();
-  const prompt = `あなたはThreadsで「${TREND_CONFIG.TARGET_DEMO}」層に向けて、本当に良いモノだけを勧めるキュレーターです。
+  const platformName =
+    POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
+  // Xの場合はURLは23文字固定、Threadsの場合は実数
+  const urlCharCount =
+    POST_CONFIG.PLATFORM === "twitter" ? 23 : product.url.length;
+  const metaOverhead = urlCharCount + 2; // 改行等のバッファ（#PR削除）
 
-【紹介商品】
-・商品名: ${product.name}
-・URL: ${product.url}
+  const prompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層に向けて、本当に良いモノだけを勧めるキュレーターです。
+
+【紹介商品詳細】
+・名称: ${product.name}
+・価格: ${product.price}円
+・レビュー: 平均${product.reviewAvg}点 (${product.reviewCount}件)
+・キャプション（参考）: ${product.caption ? product.caption.substring(0, 300) : "なし"}
+・商品URL: ${product.url}
 
 【文脈情報】
 ${trendContext}
 
-【重要制約】
-・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感（イベント、気温、習慣など）と具体的に絡めて3〜4行で記述してください。
-・「PRであること」を隠さず、かつ自然なトーンで ${product.url} への誘導を行ってください。
-・文字数を稼ぐためにわざとらしい言葉を使わず、商品の具体的なメリットや口コミ、使い心地などの「実用的な情報」を詳しく書き込んでください。
-・全体で${POST_CONFIG.AFFILIATE_POST_MIN_CHARS}文字以上にしてください（短いと破棄されます）。
-・投稿本文のみをそのまま出力してください。前置きや確認コメントは不要です。
-・読者への問いかけ（「いかがですか？」など）は不要です。商品の価値を伝えることに集中してください。
+【★文字数制限【厳守】★】
+・URLとタグを含めた最終的な投稿を、全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS}文字以内に収める必要があります。
+・システムが後からURL等（約${metaOverhead}文字分）を付与するため、本文メッセージは全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS - metaOverhead - 10}文字程度を目安に作成してください。
+
+【構成指示】
+・#{product.name}の具体的な魅力や使い心地を記述 ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
+・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めてください。
+・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
+・投稿本文のみをそのまま出力してください。
 ・一人称は必ず「僕」で統一してください。
 ${successfulPostsContext}
 `;
 
-  let text = "";
+  let bodyText = "";
   for (let r = 0; r < 2; r++) {
-    text = cleanPostText(callGeminiAPI(prompt));
-    if (text.length >= POST_CONFIG.AFFILIATE_POST_MIN_CHARS) break;
+    bodyText = cleanPostText(callGeminiAPI(prompt));
+    // 140文字制限(X)の場合は短めでも受理、Threadsの場合は従来どおり
+    const minLen =
+      POST_CONFIG.PLATFORM === "twitter"
+        ? 30
+        : POST_CONFIG.AFFILIATE_POST_MIN_CHARS - 30;
+    if (bodyText.length >= minLen) break;
     Utilities.sleep(1000);
   }
 
-  if (text.indexOf("#PR") === -1) text += "\n\n#PR";
-  if (text.indexOf(product.url) === -1) text += "\n\n" + product.url;
+  // 最終的な組み立て
+  let finalText = bodyText;
+  if (finalText.indexOf(product.url) === -1) finalText += "\n" + product.url;
 
-  return text;
+  // 最終文字数チェック
+  const max = POST_CONFIG.AFFILIATE_POST_MAX_CHARS;
+  // 実際に見える文字数（XのURL短縮を考慮）で判定
+  const visibleLen = finalText.length - product.url.length + urlCharCount;
+
+  if (visibleLen > max) {
+    Logger.log(
+      `[PostGenerator] アフィリエイト投稿が制限を超過(${visibleLen}/${max})。切り詰めます。`,
+    );
+    const metaText = `\n${product.url}`;
+    // 本文として許容できる長さを再計算
+    const allowedBodyLen = max - metaOverhead - 3;
+    finalText = bodyText.substring(0, allowedBodyLen) + "..." + metaText;
+  }
+
+  return finalText;
 }
 
 /**

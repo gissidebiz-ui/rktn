@@ -24,7 +24,7 @@ function refreshRecentPostInsights() {
   // 1行目はヘッダーなので2行目から
   for (let i = 1; i < data.length; i++) {
     const status = data[i][SHEET_COLUMNS.STATUS - 1];
-    const threadId = data[i][SHEET_COLUMNS.THREADS_ID - 1];
+    const threadId = data[i][SHEET_COLUMNS.TWEET_ID - 1];
     const createdAt = data[i][SHEET_COLUMNS.CREATED_AT - 1];
 
     // 投稿済み、かつIDがあり、分析対象期間内のものを更新

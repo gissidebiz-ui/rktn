@@ -213,10 +213,10 @@ function updatePostStatusBatch(results) {
       .setValue(res.success ? "posted" : "error");
 
     if (res.success) {
-      sheet.getRange(res.row, SHEET_COLUMNS.THREADS_ID).setValue(res.postId);
+      sheet.getRange(res.row, SHEET_COLUMNS.TWEET_ID).setValue(res.postId);
       if (res.parentId)
         sheet
-          .getRange(res.row, SHEET_COLUMNS.PARENT_THREADS_ID)
+          .getRange(res.row, SHEET_COLUMNS.PARENT_TWEET_ID)
           .setValue(res.parentId);
     } else {
       sheet.getRange(res.row, SHEET_COLUMNS.ERROR_MSG).setValue(res.error);

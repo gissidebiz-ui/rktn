@@ -21,13 +21,12 @@
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu("🧵 Threads 自動投稿")
+  ui.createMenu("🐦 X 自動投稿")
     .addItem("📝 セット生成（トレンド自動）", "menuGenerateTrends")
     .addItem("🔗 セット生成（楽天URL指定）", "menuGenerateByUrl")
     .addSeparator()
-    .addItem("🚀 スレッド一括投稿", "menuPublishThreads")
+    .addItem("🚀 X へ一括投稿", "menuPublishToTwitter")
     .addItem("📊 統計表示", "showStats")
-    .addItem("🔄 インサイトを手動更新", "refreshRecentPostInsights")
     .addSeparator()
     .addItem("⚙️ トリガーを再設定", "resetTriggers")
     .addToUi();
@@ -64,18 +63,18 @@ function menuGenerateByUrl() {
 }
 
 /**
- * メニュー用: スレッド一括投稿 (未投稿分をすべてスレッド化)
+ * メニュー用: X（Twitter）へ一括投稿 (未投稿分をすべて投稿)
  */
-function menuPublishThreads() {
+function menuPublishToTwitter() {
   const set = getNextPendingPostSet();
   if (!set) {
     SpreadsheetApp.getUi().alert("投稿待ちのセットが見つかりませんでした。");
     return;
   }
 
-  const results = publishPostSetAsThread(set);
+  const results = publishPostSetToTwitter(set);
   updatePostStatusBatch(results);
-  SpreadsheetApp.getUi().alert("スレッド形式での一括投稿が完了しました。");
+  SpreadsheetApp.getUi().alert("X への一括投稿が完了しました。");
 }
 
 /**
@@ -96,8 +95,10 @@ function initialSetup() {
   // 2. スクリプトプロパティの確認
   const requiredKeys = [
     "GEMINI_API_KEY",
-    "THREADS_ACCESS_TOKEN",
-    "THREADS_USER_ID",
+    "TWITTER_API_KEY",
+    "TWITTER_API_SECRET",
+    "TWITTER_ACCESS_TOKEN",
+    "TWITTER_ACCESS_SECRET",
     "RAKUTEN_APP_ID",
     "RAKUTEN_ACCESS_KEY",
   ];
@@ -327,7 +328,7 @@ function generateAndSchedule(rakutenUrl) {
  * メイン処理②: スケジュール済み投稿の実行
  * ============================================================
  * 1分間隔トリガーで呼び出される。
- * 予定時刻を過ぎた未投稿を検出し、Threads API で投稿を実行。
+ * 予定時刻を過ぎた未投稿を検出し、Twitter API で投稿を実行。
  */
 function processScheduledPosts() {
   if (!shouldPostNow()) return;
@@ -345,8 +346,8 @@ function processScheduledPosts() {
 
     Logger.log(`[Main] 単一投稿を実行: ${post.row}行目 「${post.type}」`);
 
-    // 投稿実行
-    const postId = publishTextPost(post.text);
+    // 投稿実行（X/Twitter）
+    const postId = postToTwitter(post.text);
 
     // 結果を反映
     updatePostStatusBatch([
@@ -435,13 +436,17 @@ function runFullTest() {
     Logger.log(`❌ スプレッドシート管理: ${e.message}`);
   }
 
-  // 5. Threads API テスト
-  Logger.log("\n--- 5. Threads API テスト ---");
+  // 5. Twitter API テスト
+  Logger.log("\n--- 5. Twitter API テスト ---");
   try {
-    testThreadsPost();
-    Logger.log("✅ Threads API: OK");
+    if (DRY_RUN) {
+      const testId = postToTwitter("テスト投稿です #test");
+      Logger.log(`✅ Twitter API: OK (DRY_RUN ID: ${testId})`);
+    } else {
+      Logger.log("⚠️ Twitter API: DRY_RUN=false のためスキップしました");
+    }
   } catch (e) {
-    Logger.log(`❌ Threads API: ${e.message}`);
+    Logger.log(`❌ Twitter API: ${e.message}`);
   }
 
   Logger.log("\n========================================");
