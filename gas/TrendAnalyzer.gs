@@ -19,23 +19,33 @@ function callGeminiAPI(prompt) {
 
   for (let attempt = 1; attempt <= GEMINI_CONFIG.MAX_RETRIES; attempt++) {
     try {
+      Logger.log(
+        `[Gemini] 呼び出し開始: ${url.replace(/key=.*$/, "key=API_KEY_HIDDEN")}`,
+      );
       const response = UrlFetchApp.fetch(url, {
         method: "post",
         contentType: "application/json",
         payload: JSON.stringify(payload),
         muteHttpExceptions: true,
       });
-      const json = JSON.parse(response.getContentText());
+      const content = response.getContentText();
+      const json = JSON.parse(content);
       if (json.candidates && json.candidates[0]?.content?.parts[0]?.text) {
         return json.candidates[0].content.parts[0].text.trim();
+      } else {
+        Logger.log(
+          `[Gemini] 返答エラー (${response.getResponseCode()}): ${content}`,
+        );
       }
     } catch (e) {
-      Logger.log(`[Gemini] リトライ ${attempt}: ${e.message}`);
+      Logger.log(`[Gemini] リトライ ${attempt} 失敗: ${e.message}`);
       if (attempt < GEMINI_CONFIG.MAX_RETRIES)
         Utilities.sleep(GEMINI_CONFIG.RETRY_DELAY_MS);
     }
   }
-  throw new Error("Gemini API の呼び出しに失敗しました。");
+  throw new Error(
+    "Gemini API の呼び出しに失敗しました。詳細な理由はログを確認してください。",
+  );
 }
 
 /**

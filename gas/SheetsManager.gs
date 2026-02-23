@@ -60,6 +60,24 @@ function getOrCreateSheet(sheetName) {
       sheet.setColumnWidth(6, 150); // 親Threads ID
       sheet.setColumnWidth(7, 140); // 作成日時
       sheet.setColumnWidth(8, 200); // エラー
+
+      // 分析用カラム
+      sheet
+        .getRange(1, 9, 1, 6)
+        .setValues([
+          [
+            "いいね数",
+            "返信数",
+            "再投稿数",
+            "引用数",
+            "表示数",
+            "最終分析日時",
+          ],
+        ]);
+      sheet.getRange(1, 9, 1, 6).setFontWeight("bold");
+      for (let c = 9; c <= 14; c++) {
+        sheet.setColumnWidth(c, 80);
+      }
     }
 
     if (sheetName === LOG_SHEET_NAME) {
@@ -215,33 +233,24 @@ function updatePostStatusBatch(results) {
 }
 
 /**
- * 楽天 API: キーワード検索
+ * 投稿のメトリクスを更新
  */
-function fetchRakutenItems(keyword, hits = 3) {
-  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?applicationId=${CONFIG.RAKUTEN_APP_ID}&affiliateId=${CONFIG.RAKUTEN_AFFILIATE_ID}&keyword=${encodeURIComponent(keyword)}&hits=${hits}&formatVersion=2`;
-  const res = UrlFetchApp.fetch(url);
-  const data = JSON.parse(res.getContentText());
-  return (data.Items || []).map((item) => ({
-    name: item.itemName,
-    url: item.affiliateUrl || item.itemUrl,
-    price: item.itemPrice,
-  }));
-}
+function updatePostMetrics(row, metrics) {
+  const sheet = getOrCreateSheet(SHEET_NAME);
+  if (!metrics) return;
 
-/**
- * 楽天 API: URL から取得
- */
-function fetchRakutenItemsByUrl(itemUrl) {
-  const itemId = itemUrl.match(/item\/([^/]+)\/([^/]+)/);
-  if (!itemId) return [];
-  const url = `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20170706?applicationId=${CONFIG.RAKUTEN_APP_ID}&affiliateId=${CONFIG.RAKUTEN_AFFILIATE_ID}&itemCode=${itemId[1]}:${itemId[2]}&formatVersion=2`;
-  const res = UrlFetchApp.fetch(url);
-  const data = JSON.parse(res.getContentText());
-  return (data.Items || []).map((item) => ({
-    name: item.itemName,
-    url: item.affiliateUrl || item.itemUrl,
-    price: item.itemPrice,
-  }));
+  const values = [
+    [
+      metrics.likes || 0,
+      metrics.replies || 0,
+      metrics.reposts || 0,
+      metrics.quotes || 0,
+      metrics.views || 0,
+      new Date(),
+    ],
+  ];
+
+  sheet.getRange(row, SHEET_COLUMNS.METRICS_LIKES, 1, 6).setValues(values);
 }
 
 /**

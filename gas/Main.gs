@@ -27,6 +27,7 @@ function onOpen() {
     .addSeparator()
     .addItem("🚀 スレッド一括投稿", "menuPublishThreads")
     .addItem("📊 統計表示", "showStats")
+    .addItem("🔄 インサイトを手動更新", "refreshRecentPostInsights")
     .addSeparator()
     .addItem("⚙️ トリガーを再設定", "resetTriggers")
     .addToUi();
@@ -98,6 +99,7 @@ function initialSetup() {
     "THREADS_ACCESS_TOKEN",
     "THREADS_USER_ID",
     "RAKUTEN_APP_ID",
+    "RAKUTEN_ACCESS_KEY",
   ];
   const props = PropertiesService.getScriptProperties();
   const missingKeys = [];
@@ -137,7 +139,11 @@ function setupTriggers() {
   const triggers = ScriptApp.getProjectTriggers();
 
   // 同名トリガーの重複を検出し、重複があれば削除してから再登録
-  const targetFunctions = ["generateAndSchedule", "processScheduledPosts"];
+  const targetFunctions = [
+    "generateAndSchedule",
+    "processScheduledPosts",
+    "refreshRecentPostInsights",
+  ];
 
   targetFunctions.forEach(function (funcName) {
     const existing = triggers.filter(function (t) {
@@ -184,6 +190,18 @@ function setupTriggers() {
     Logger.log("✅ 1分間隔トリガー「processScheduledPosts」を登録しました");
   } else {
     Logger.log("ℹ️ 1分間隔トリガー「processScheduledPosts」は既に登録済みです");
+  }
+
+  // 3. 週次/日次トリガー: refreshRecentPostInsights（毎日午前2時）
+  if (existingFunctions.indexOf("refreshRecentPostInsights") === -1) {
+    ScriptApp.newTrigger("refreshRecentPostInsights")
+      .timeBased()
+      .everyDays(1)
+      .atHour(2)
+      .create();
+    Logger.log(
+      "✅ 日次トリガー「refreshRecentPostInsights」を登録しました（毎日2時）",
+    );
   }
 }
 

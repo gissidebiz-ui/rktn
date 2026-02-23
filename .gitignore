@@ -1,59 +1,29 @@
 # ============================================================================
-# SECURITY: 絶対に GitHub にアップロードしないファイル
+# GitHub Repository Whitelist Configuration
+# Only specific folders are allowed to be tracked.
 # ============================================================================
 
-# API キーおよび認証情報
-config/secrets.yaml
-config/accounts.yaml
-config/.env
-config/.env.local
-.env
-.env.local
-.env.*.local
+# Step 1: Ignore everything by default
+/*
 
-# AWS, Google, その他クラウド認証ファイル
-*.pem
-*.key
-*.p12
-*.pfx
-~/.aws/
-~/.gcloud/
+# Step 2: Allow specific folders and essential root files
+!/gas/
+!/html/
+!/src/
+!/.gitignore
 
-# ============================================================================
-# データディレクトリ（プライベート情報）
-# ============================================================================
-data/
-logs/
+# Step 3: Explicitly ignore environmental files at any level
+**/.env*
+.env*
 
-# ============================================================================
-# 開発環境
-# ============================================================================
-src/
-.vscode/
-.idea/
-*.pyc
-__pycache__/
-*.egg-info/
-.pytest_cache/
-tests/__pycache__/
-.mypy_cache/
-venv/
-env/
-
-# ============================================================================
-# OS ファイル
-# ============================================================================
+# Step 4: Ignore redundant/environmental files
+**/*.pyc
+**/__pycache__/
 .DS_Store
 Thumbs.db
-.swp
-.swo
-*~
-
-# ============================================================================
-# エディタバックアップ
-# ============================================================================
-*.bak
-*.swp
-*.swo
-*~
-.#*
+node_modules/
+.venv/
+env/
+venv/
+.pytest_cache/
+.mypy_cache/

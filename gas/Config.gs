@@ -76,7 +76,7 @@ const CONFIG = {
 const TREND_CONFIG = {
   // 【最重要】アカウントのペルソナ。ここを書き換えるだけで投稿内容が激変します
   TARGET_DEMO:
-    "30代男性、ビジネスマン、効率化・最新ガジェット愛好家。等身大で有益な情報を発信するスタイル。",
+    "30代男性、ビジネスマン、効率化・最新ガジェット愛好家。等身大で有益な情報を発信するスタイル。一人称は「僕」で統一してください。",
 
   CACHE_KEY: "TREND_CACHE",
   CACHE_TIMESTAMP_KEY: "TREND_CACHE_TS",
@@ -103,13 +103,17 @@ const SCHEDULE_CONFIG = {
 // ================================
 const POST_CONFIG = {
   NORMAL_POST_MAX_CHARS: 500,
-  AFFILIATE_POST_MIN_CHARS: 200,
+  AFFILIATE_POST_MIN_CHARS: 150,
   AFFILIATE_POST_MAX_CHARS: 500,
 
   // 黄金比（通常 3 : アフィリエイト 1）
   NORMAL_POSTS_PER_SET: 3,
   AFFILIATE_POSTS_PER_SET: 1,
   TOTAL_POSTS_PER_SET: 4,
+
+  // --- 分析・改善設定 ---
+  ANALYZE_DAYS_BACK: 7, // 過去何日間の投稿を分析対象にするか
+  HIGH_PERFORMANCE_LIMIT: 5, // 優秀な投稿として抽出する数
 };
 
 // ================================
@@ -147,6 +151,13 @@ const SHEET_COLUMNS = {
   PARENT_THREADS_ID: 6,
   CREATED_AT: 7,
   ERROR_MSG: 8,
+  // --- 分析用カラム ---
+  METRICS_LIKES: 9,
+  METRICS_REPLIES: 10,
+  METRICS_REPOSTS: 11,
+  METRICS_QUOTES: 12,
+  METRICS_VIEWS: 13,
+  ANALYZED_AT: 14,
 };
 
 const SHEET_NAME = "投稿予約";

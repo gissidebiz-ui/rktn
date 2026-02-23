@@ -47,9 +47,22 @@ function fetchRakutenItems(keyword, hits) {
   };
 
   try {
+    Logger.log("[Rakuten] 取得開始 URL: " + url);
     const response = UrlFetchApp.fetch(url, options);
+    const content = response.getContentText();
 
-    const data = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200) {
+      Logger.log(
+        "[Rakuten] エラーレスポンス (" +
+          response.getResponseCode() +
+          "): " +
+          content,
+      );
+      throw new Error("Rakuten API returned " + response.getResponseCode());
+    }
+
+    const data = JSON.parse(content);
+    // const data = JSON.parse(response.getContentText());
 
     if (!data.Items || data.Items.length === 0) {
       Logger.log(`[Rakuten] 商品が見つかりません: ${keyword}`);
@@ -72,8 +85,8 @@ function fetchRakutenItems(keyword, hits) {
       };
     });
   } catch (e) {
-    Logger.log(`[Rakuten] API エラー: ${e.message}`);
-    return [];
+    Logger.log("[Rakuten] API エラー詳細: " + e.message);
+    throw e;
   }
 }
 
@@ -81,6 +94,9 @@ function fetchRakutenItems(keyword, hits) {
  * 楽天 API URL を新仕様のエンドポイントに変換する
  */
 function convertToRakutenOpenApiUrl(url) {
+  if (!url) return url;
+
+  const targetDomain = "openapi.rakuten.co.jp";
   const endpointMapping = {
     "IchibaItem/Search": "ichibams",
     "IchibaItem/Ranking": "ichibaranking",
@@ -94,7 +110,7 @@ function convertToRakutenOpenApiUrl(url) {
     "Travel/GetAreaClass": "engine",
   };
 
-  let newUrl = url.replace("app.rakuten.co.jp", RAKUTEN_API_CONFIG.DOMAIN);
+  let newUrl = url.replace("app.rakuten.co.jp", targetDomain);
 
   // 楽天市場ランキングのバージョン更新 (20170628 -> 20220601)
   if (newUrl.indexOf("IchibaItem/Ranking/20170628") !== -1) {
@@ -106,7 +122,20 @@ function convertToRakutenOpenApiUrl(url) {
       newUrl.indexOf(key) !== -1 &&
       newUrl.indexOf(endpointMapping[key] + "/api/") === -1
     ) {
-      newUrl = newUrl.replace("services/api/", endpointMapping[key] + "/api/");
+      // 一部のAPIは初期状態で services/api/ を持っていないか、既に置換されている場合を考慮
+      if (newUrl.indexOf("services/api/") !== -1) {
+        newUrl = newUrl.replace(
+          "services/api/",
+          endpointMapping[key] + "/api/",
+        );
+      } else if (newUrl.indexOf("/api/") !== -1) {
+        // services/api 以外（既にドメイン置換済み等）でもプレフィックスを付ける必要がある場合
+        const parts = newUrl.split("/api/");
+        if (parts[0].indexOf(endpointMapping[key]) === -1) {
+          parts[0] = parts[0] + "/" + endpointMapping[key];
+          newUrl = parts.join("/api/");
+        }
+      }
       break;
     }
   }
@@ -123,7 +152,6 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
   const affiliateId = CONFIG.RAKUTEN_AFFILIATE_ID;
 
   // URL にアプリIDが含まれていなければ追加
-  // 2026年新仕様に基づき、ドメインとパラメータを更新
   let url = convertToRakutenOpenApiUrl(rakutenApiUrl);
 
   if (url.indexOf("applicationId") === -1) {
@@ -146,9 +174,23 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
   };
 
   try {
+    Logger.log("[Rakuten] URL指定取得開始 URL: " + url);
     const response = UrlFetchApp.fetch(url, options);
+    const content = response.getContentText();
 
-    const data = JSON.parse(response.getContentText());
+    if (response.getResponseCode() !== 200) {
+      Logger.log(
+        "[Rakuten] URL指定エラー (" +
+          response.getResponseCode() +
+          "): " +
+          content,
+      );
+      throw new Error(
+        "Rakuten API URL fetch returned " + response.getResponseCode(),
+      );
+    }
+
+    const data = JSON.parse(content);
 
     // 楽天 Books 系 API と Ichiba API で構造が異なるため両方に対応
     const items = data.Items || data.items || [];
@@ -166,8 +208,8 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
       };
     });
   } catch (e) {
-    Logger.log(`[Rakuten] URL API エラー: ${e.message}`);
-    return [];
+    Logger.log("[Rakuten] URL API エラー詳細: " + e.message);
+    throw e;
   }
 }
 
@@ -214,6 +256,52 @@ function searchRakutenProduct(keyword, trendData) {
   return products.length > 0
     ? products[Math.floor(Math.random() * products.length)]
     : null;
+}
+
+/**
+ * 高評価の過去投稿を取得する
+ */
+function getHighPerformingPosts(limit) {
+  limit = limit || POST_CONFIG.HIGH_PERFORMANCE_LIMIT;
+  const sheet = getOrCreateSheet(SHEET_NAME);
+  const data = sheet.getDataRange().getValues();
+
+  // いいね + 返信 + 再投稿 の合計でソート
+  const posts = [];
+  for (let i = 1; i < data.length; i++) {
+    const status = data[i][SHEET_COLUMNS.STATUS - 1];
+    if (status !== "posted") continue;
+
+    const likes = Number(data[i][SHEET_COLUMNS.METRICS_LIKES - 1]) || 0;
+    const replies = Number(data[i][SHEET_COLUMNS.METRICS_REPLIES - 1]) || 0;
+    const reposts = Number(data[i][SHEET_COLUMNS.METRICS_REPOSTS - 1]) || 0;
+    const score = likes + replies * 2 + reposts * 3; // 返信や再投稿を重く評価
+
+    if (score > 0) {
+      posts.push({
+        text: data[i][SHEET_COLUMNS.POST_TEXT - 1],
+        score: score,
+      });
+    }
+  }
+
+  // スコア降順でソートして上位を返す
+  return posts.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+/**
+ * 成功例をベースにしたプロンプト用テキストを構築
+ */
+function buildSuccessfulPostsContext() {
+  const topPosts = getHighPerformingPosts();
+  if (topPosts.length === 0) return "";
+
+  let context =
+    "\n【過去に反応が良かった投稿例（これらを参考にしてください）】\n";
+  topPosts.forEach((p, i) => {
+    context += `例${i + 1}:\n${p.text}\n---\n`;
+  });
+  return context;
 }
 
 /**
@@ -278,14 +366,19 @@ function generatePostSet(keywordOrUrl, offset = 0) {
           productInfo: product,
         });
       }
+    } else {
+      Logger.log("[PostGenerator] !! アフィリエイト商品の取得に失敗しました。");
     }
   } catch (e) {
-    Logger.log(`[PostGenerator] アフィリエイト生成失敗: ${e.message}`);
+    Logger.log(
+      `[PostGenerator] アフィリエイト生成中にエラーが発生しました: ${e.message}`,
+    );
   }
 
-  // アフィリエイトが失敗した場合は通常投稿で埋めて構造を維持
   if (!affPostText) {
-    Logger.log("[PostGenerator] フォールバック: 通常投稿を生成します");
+    Logger.log(
+      "[PostGenerator] !! アフィリエイト生成が要件を満たさなかったため、通常投稿でフォールバックします。",
+    );
     let fallbackText = "";
     let retries = 0;
     while (!fallbackText && retries < 3) {
@@ -337,6 +430,7 @@ function generateNormalPost(trendData, offset) {
     trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
     "生産性";
   const month = new Date().getMonth() + 1;
+  const successfulPostsContext = buildSuccessfulPostsContext();
 
   const prompt = `あなたはThreadsで「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
 
@@ -345,13 +439,16 @@ function generateNormalPost(trendData, offset) {
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
 ・現在は${month}月です。必ずこの時期に相応しい内容にしてください。
 ・投稿本文のみをそのまま出力してください。
+・「〜ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
+・一人称（自分自身の呼び方）は必ず「僕」で統一してください。「私」や「俺」は使用しないでください。
 
 【今回の指示】
 ・テーマ: 「${focusKeyword}」を自然な形で本文に組み込んでください。
 ・スタイル: 「${style}」
 ・ハッシュタグは2つまで。絵文字は控えめに（2つまで）。
 ・読者に寄り添う「等身大」のトーンで、${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内で生成してください。
-・最後に思わず返信したくなるような「問いかけ」を入れてください。
+・読者に寄り添う「等身大」のトーンで、${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内で生成してください。
+${successfulPostsContext}
 `;
 
   return cleanPostText(callGeminiAPI(prompt));
@@ -362,6 +459,7 @@ function generateNormalPost(trendData, offset) {
  */
 function generateAffiliatePost(product, trendContext) {
   const month = new Date().getMonth() + 1;
+  const successfulPostsContext = buildSuccessfulPostsContext();
   const prompt = `あなたはThreadsで「${TREND_CONFIG.TARGET_DEMO}」層に向けて、本当に良いモノだけを勧めるキュレーターです。
 
 【紹介商品】
@@ -372,11 +470,14 @@ function generateAffiliatePost(product, trendContext) {
 ${trendContext}
 
 【重要制約】
-・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めて書いてください。
-・冒頭に商品の具体的な魅力を2〜3行で記述してください（商品説明不足は厳禁）。
+・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感（イベント、気温、習慣など）と具体的に絡めて3〜4行で記述してください。
 ・「PRであること」を隠さず、かつ自然なトーンで ${product.url} への誘導を行ってください。
-・全体で${POST_CONFIG.AFFILIATE_POST_MIN_CHARS}文字以上にしてください。
-・会話文、確認コメント、装飾（【 】などの多用）は不要です。本文のみ出力してください。
+・文字数を稼ぐためにわざとらしい言葉を使わず、商品の具体的なメリットや口コミ、使い心地などの「実用的な情報」を詳しく書き込んでください。
+・全体で${POST_CONFIG.AFFILIATE_POST_MIN_CHARS}文字以上にしてください（短いと破棄されます）。
+・投稿本文のみをそのまま出力してください。前置きや確認コメントは不要です。
+・読者への問いかけ（「いかがですか？」など）は不要です。商品の価値を伝えることに集中してください。
+・一人称は必ず「僕」で統一してください。
+${successfulPostsContext}
 `;
 
   let text = "";
@@ -438,17 +539,21 @@ function cleanPostText(text) {
     .replace(/^\s*\n+/, "")
     .trim();
 
-  // プレースホルダ検知（[ ] や 〇〇 など）
-  const placeholderPattern = /\[.*?\]|〇{2,}|○{2,}|◯{2,}|△{2,}/;
+  // プレースホルダ検知（[ ] や 〇〇 など。ただし、URLなどは除外）
+  const placeholderPattern = /\[[^h][^t][^t].*?\]|〇{2,}|○{2,}|◯{2,}|△{2,}/;
   if (
     placeholderPattern.test(cleaned) ||
     cleaned.includes("ブランド名") ||
-    cleaned.includes("〇〇")
+    (cleaned.includes("〇〇") && !cleaned.includes("http"))
   ) {
-    Logger.log("[PostGenerator] プレースホルダを検出したため破棄");
+    Logger.log(
+      "[PostGenerator] プレースホルダを検出したため破棄: " +
+        cleaned.substring(0, 20),
+    );
     return "";
   }
 
+  // 日本語が1文字でも含まれていれば OK とする（より柔軟に）
   return /[ぁ-んァ-ン一-龥]/.test(cleaned) ? cleaned : "";
 }
 

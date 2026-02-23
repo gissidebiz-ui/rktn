@@ -107,3 +107,45 @@ function publishPostSetAsThread(postSet) {
   }
   return results;
 }
+
+/**
+ * 投稿のインサイトを取得する
+ * @param {string} mediaId - Threads メディア ID
+ * @returns {Object} インサイトデータ
+ */
+function getMediaInsights(mediaId) {
+  const metrics = "likes,replies,reposts,quotes,views";
+  const url = `${THREADS_API_CONFIG.BASE_URL}/${mediaId}/insights?metric=${metrics}&access_token=${CONFIG.THREADS_ACCESS_TOKEN}`;
+
+  if (DRY_RUN) {
+    return {
+      likes: Math.floor(Math.random() * 10),
+      replies: Math.floor(Math.random() * 5),
+      reposts: 0,
+      quotes: 0,
+      views: Math.floor(Math.random() * 100),
+    };
+  }
+
+  const response = UrlFetchApp.fetch(url, {
+    method: "get",
+    muteHttpExceptions: true,
+  });
+
+  const res = JSON.parse(response.getContentText());
+  if (res.error) {
+    Logger.log(
+      `[ThreadsAPI] インサイト取得失敗 (${mediaId}): ${res.error.message}`,
+    );
+    return null;
+  }
+
+  const result = {};
+  if (res.data) {
+    res.data.forEach((item) => {
+      result[item.name] = item.values[0].value;
+    });
+  }
+
+  return result;
+}
