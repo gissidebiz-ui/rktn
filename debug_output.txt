@@ -1,56 +1,104 @@
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!! DEBUG: ACCOUNT = ぴょん
-!!! DEBUG: GENRES  = ['総合', 'CD', 'ゲーム', 'トラベル', 'ディズニー', 'USJ']
+!!! アクセス中のアカウント: ぴょん
+!!! 取得ジャンル: ['総合', 'トラベル', 'USJ']
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   総合 を取得中… (URL: https://app.rakuten.co.jp/services/api/BooksTotal/...)
-    -> 5件取得しました
-  CD を取得中… (URL: https://app.rakuten.co.jp/services/api/BooksCD/Sea...)
-    -> 5件取得しました
-  ゲーム を取得中… (URL: https://app.rakuten.co.jp/services/api/BooksGame/S...)
-    -> 5件取得しました
+  [DEBUG] URL: https://openapi.rakuten.co.jp/bookstotal/api/BooksTotal/Search/20170404?keyword=%E4%BA%88%E7%B4%84&booksGenreId=000&availability=5&sort=sales&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/bookstotal/api/BooksTotal/Search/20170404?keyword=%E4%BA%88%E7%B4%84&booksGenreId=000&availability=5&sort=sales&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/bookstotal/api/BooksTotal/Search/20170404?keyword=%E4%BA%88%E7%B4%84&booksGenreId=000&availability=5&sort=sales&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/BooksTotal/Search/20170404?keyword=%E4%BA%88%E7%B4%84&booksGenreId=000&availability=5&sort=sales&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
   トラベル を取得中… (URL: https://app.rakuten.co.jp/services/api/Travel/Hote...)
-    [DEBUG] トラベル: raw_items count = 1
-    [DEBUG] トラベル: first item keys = dict_keys(['Ranking'])
-    [DEBUG] トラベル: unique_items count = 0
-    -> 0件取得しました
-  ディズニー を取得中… (URL: https://app.rakuten.co.jp/services/api/Travel/Keyw...)
-    [DEBUG] ディズニー: raw_items count = 2
-    [DEBUG] ディズニー: first item keys = dict_keys(['hotel'])
-    [DEBUG] ディズニー: unique_items count = 0
-    -> 0件取得しました
+  [DEBUG] URL: https://openapi.rakuten.co.jp/travelhr/api/Travel/HotelRanking/20170426?hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/travelhr/api/Travel/HotelRanking/20170426?hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/travelhr/api/Travel/HotelRanking/20170426?hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/Travel/HotelRanking/20170426?hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
   USJ を取得中… (URL: https://app.rakuten.co.jp/services/api/Travel/Keyw...)
-    [DEBUG] USJ: raw_items count = 2
-    [DEBUG] USJ: first item keys = dict_keys(['hotel'])
-    [DEBUG] USJ: unique_items count = 0
+  [DEBUG] URL: https://openapi.rakuten.co.jp/travelks/api/Travel/KeywordHotelSearch/20170426?keyword=USJ&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/travelks/api/Travel/KeywordHotelSearch/20170426?keyword=USJ&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/travelks/api/Travel/KeywordHotelSearch/20170426?keyword=USJ&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/Travel/KeywordHotelSearch/20170426?keyword=USJ&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
     -> 0件取得しました
-  [ERROR] ファイル保存失敗: [Errno 2] No such file or directory: '../data/input/ぴょん_input.csv'
+    -> 0件取得しました
+    -> 0件取得しました
+  [SKIP] 取得データが0件のため保存しません
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!! DEBUG: ACCOUNT = ツイてる
-!!! DEBUG: GENRES  = ['DVD', '雑誌', 'ゲーム']
+!!! アクセス中のアカウント: ツイてる
+!!! 取得ジャンル: ['DVD', '雑誌', 'ゲーム']
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   DVD を取得中… (URL: https://app.rakuten.co.jp/services/api/BooksDVD/Se...)
-    -> 5件取得しました
+  [DEBUG] URL: https://openapi.rakuten.co.jp/booksdvd/api/BooksDVD/Search/20170404?booksGenreId=003&sort=standard&availability=5&limitedFlag=1&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/booksdvd/api/BooksDVD/Search/20170404?booksGenreId=003&sort=standard&availability=5&limitedFlag=1&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/booksdvd/api/BooksDVD/Search/20170404?booksGenreId=003&sort=standard&availability=5&limitedFlag=1&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/BooksDVD/Search/20170404?booksGenreId=003&sort=standard&availability=5&limitedFlag=1&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
   雑誌 を取得中… (URL: https://app.rakuten.co.jp/services/api/BooksMagazi...)
-    -> 5件取得しました
+  [DEBUG] URL: https://openapi.rakuten.co.jp/booksmagazine/api/BooksMagazine/Search/20170404?booksGenreId=007604001&sort=sales&availability=5&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/booksmagazine/api/BooksMagazine/Search/20170404?booksGenreId=007604001&sort=sales&availability=5&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/booksmagazine/api/BooksMagazine/Search/20170404?booksGenreId=007604001&sort=sales&availability=5&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/BooksMagazine/Search/20170404?booksGenreId=007604001&sort=sales&availability=5&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
   ゲーム を取得中… (URL: https://app.rakuten.co.jp/services/api/BooksGame/S...)
-    -> 5件取得しました
-  [ERROR] ファイル保存失敗: [Errno 2] No such file or directory: '../data/input/ツイてる_input.csv'
+  [DEBUG] URL: https://openapi.rakuten.co.jp/booksgame/api/BooksGame/Search/20170404?title=%E7%89%B9%E5%85%B8&booksGenreId=006&availability=5&sort=sales&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/booksgame/api/BooksGame/Search/20170404?title=%E7%89%B9%E5%85%B8&booksGenreId=006&availability=5&sort=sales&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/booksgame/api/BooksGame/Search/20170404?title=%E7%89%B9%E5%85%B8&booksGenreId=006&availability=5&sort=sales&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/BooksGame/Search/20170404?title=%E7%89%B9%E5%85%B8&booksGenreId=006&availability=5&sort=sales&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+    -> 0件取得しました
+    -> 0件取得しました
+    -> 0件取得しました
+  [SKIP] 取得データが0件のため保存しません
 
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!!! DEBUG: ACCOUNT = さくら
-!!! DEBUG: GENRES  = ['総合ランキング', '美容コスメ', 'スイーツ']
+!!! アクセス中のアカウント: さくら
+!!! 取得ジャンル: ['総合ランキング', '美容コスメ', 'ディズニー']
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   総合ランキング を取得中… (URL: https://app.rakuten.co.jp/services/api/IchibaItem/...)
-    -> 5件取得しました
+  [DEBUG] URL: https://openapi.rakuten.co.jp/ichibart/api/IchibaItem/Ranking/20170628?genreId=0&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/ichibart/api/IchibaItem/Ranking/20170628?genreId=0&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/ichibart/api/IchibaItem/Ranking/20170628?genreId=0&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20170628?genreId=0&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
   美容コスメ を取得中… (URL: https://app.rakuten.co.jp/services/api/IchibaItem/...)
-    -> 5件取得しました
-  スイーツ を取得中… (URL: https://app.rakuten.co.jp/services/api/IchibaItem/...)
-    -> 5件取得しました
-  [ERROR] ファイル保存失敗: [Errno 2] No such file or directory: '../data/input/さくら_input.csv'
+  [DEBUG] URL: https://openapi.rakuten.co.jp/ichibart/api/IchibaItem/Ranking/20170628?genreId=100371&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/ichibart/api/IchibaItem/Ranking/20170628?genreId=100371&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/ichibart/api/IchibaItem/Ranking/20170628?genreId=100371&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/IchibaItem/Ranking/20170628?genreId=100371&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  ディズニー を取得中… (URL: https://app.rakuten.co.jp/services/api/Travel/Keyw...)
+  [DEBUG] URL: https://openapi.rakuten.co.jp/travelks/api/Travel/KeywordHotelSearch/20170426?keyword=%E3%83%87%E3%82%A3%E3%82%BA%E3%83%8B%E3%83%BC&hits=5
+  [DEBUG] Params: {'format': 'json', 'applicationId': '8f8483f5-5e9b-412e-8ec6-95f18a86a520', 'accessKey': 'pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7', 'affiliateId': '1b4f52c0.25c19287.1b4f52c1.45201d1a'}
+  [DEBUG] Headers: {'Referer': 'https://gissidebiz-ui.github.io/rktn/html', 'Origin': 'https://gissidebiz-ui.github.io'}
+  [DEBUG] Error Response: { "statusCode": 404, "message": "Resource not found" }
+  [ERROR] APIリクエスト失敗 (https://openapi.rakuten.co.jp/travelks/api/Travel/KeywordHotelSearch/20170426?keyword=%E3%83%87%E3%82%A3%E3%82%BA%E3%83%8B%E3%83%BC&hits=5): 404 Client Error: Resource Not Found for url: https://openapi.rakuten.co.jp/travelks/api/Travel/KeywordHotelSearch/20170426?keyword=%E3%83%87%E3%82%A3%E3%82%BA%E3%83%8B%E3%83%BC&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+  [INFO] 旧エンドポイントで再試行します...
+  [ERROR] 旧仕様再試行も失敗: 400 Client Error: 400 for url: https://app.rakuten.co.jp/services/api/Travel/KeywordHotelSearch/20170426?keyword=%E3%83%87%E3%82%A3%E3%82%BA%E3%83%8B%E3%83%BC&hits=5&format=json&applicationId=8f8483f5-5e9b-412e-8ec6-95f18a86a520&accessKey=pk_cZYBqzohZP4WrSnS4KFmDZlNEOv0Fx866ohqxN93kT7&affiliateId=1b4f52c0.25c19287.1b4f52c1.45201d1a
+    -> 0件取得しました
+    -> 0件取得しました
+    -> 0件取得しました
+  [SKIP] 取得データが0件のため保存しません
 
-すべてのアカウントの処理が完了しました！
+すべてのアカウントの CSV 生成処理が完了しました！

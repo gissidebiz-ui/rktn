@@ -17,24 +17,38 @@ function fetchRakutenItems(keyword, hits) {
   hits = hits || 3;
   const appId = CONFIG.RAKUTEN_APP_ID;
   const affiliateId = CONFIG.RAKUTEN_AFFILIATE_ID;
+  const accessKey = CONFIG.RAKUTEN_ACCESS_KEY;
 
-  if (!appId) {
+  if (!appId || !accessKey) {
     throw new Error(
-      "RAKUTEN_APP_ID がスクリプトプロパティに設定されていません",
+      "RAKUTEN_APP_ID または RAKUTEN_ACCESS_KEY がスクリプトプロパティに設定されていません",
     );
   }
 
-  const url =
-    "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601" +
+  const rawUrl =
+    `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` +
     `?applicationId=${appId}` +
+    `&accessKey=${accessKey}` +
     `&affiliateId=${affiliateId}` +
     `&keyword=${encodeURIComponent(keyword)}` +
     `&hits=${hits}` +
     "&sort=-reviewCount" +
     "&availability=1";
 
+  const url = convertToRakutenOpenApiUrl(rawUrl);
+
+  const options = {
+    method: "get",
+    headers: {
+      Referer: RAKUTEN_API_CONFIG.REFERER,
+      Origin: RAKUTEN_API_CONFIG.ORIGIN.replace(/\/$/, ""),
+    },
+    muteHttpExceptions: true,
+  };
+
   try {
-    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const response = UrlFetchApp.fetch(url, options);
+
     const data = JSON.parse(response.getContentText());
 
     if (!data.Items || data.Items.length === 0) {
@@ -64,6 +78,42 @@ function fetchRakutenItems(keyword, hits) {
 }
 
 /**
+ * 楽天 API URL を新仕様のエンドポイントに変換する
+ */
+function convertToRakutenOpenApiUrl(url) {
+  const endpointMapping = {
+    "IchibaItem/Search": "ichibams",
+    "IchibaItem/Ranking": "ichibaranking",
+    "BooksTotal/Search": "services",
+    "BooksCD/Search": "services",
+    "BooksDVD/Search": "services",
+    "BooksGame/Search": "services",
+    "BooksMagazine/Search": "services",
+    "Travel/HotelRanking": "engine",
+    "Travel/KeywordHotelSearch": "engine",
+    "Travel/GetAreaClass": "engine",
+  };
+
+  let newUrl = url.replace("app.rakuten.co.jp", RAKUTEN_API_CONFIG.DOMAIN);
+
+  // 楽天市場ランキングのバージョン更新 (20170628 -> 20220601)
+  if (newUrl.indexOf("IchibaItem/Ranking/20170628") !== -1) {
+    newUrl = newUrl.replace("20170628", "20220601");
+  }
+
+  for (let key in endpointMapping) {
+    if (
+      newUrl.indexOf(key) !== -1 &&
+      newUrl.indexOf(endpointMapping[key] + "/api/") === -1
+    ) {
+      newUrl = newUrl.replace("services/api/", endpointMapping[key] + "/api/");
+      break;
+    }
+  }
+  return newUrl;
+}
+
+/**
  * 楽天 URL から直接商品情報を取得する（URL指定版）
  * @param {string} rakutenApiUrl - 楽天 API の完全な URL
  * @returns {Object[]} 商品情報の配列
@@ -73,16 +123,31 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
   const affiliateId = CONFIG.RAKUTEN_AFFILIATE_ID;
 
   // URL にアプリIDが含まれていなければ追加
-  let url = rakutenApiUrl;
+  // 2026年新仕様に基づき、ドメインとパラメータを更新
+  let url = convertToRakutenOpenApiUrl(rakutenApiUrl);
+
   if (url.indexOf("applicationId") === -1) {
     url += (url.indexOf("?") === -1 ? "?" : "&") + `applicationId=${appId}`;
+  }
+  if (url.indexOf("accessKey") === -1) {
+    url += `&accessKey=${CONFIG.RAKUTEN_ACCESS_KEY}`;
   }
   if (url.indexOf("affiliateId") === -1 && affiliateId) {
     url += `&affiliateId=${affiliateId}`;
   }
 
+  const options = {
+    method: "get",
+    headers: {
+      Referer: RAKUTEN_API_CONFIG.REFERER,
+      Origin: RAKUTEN_API_CONFIG.ORIGIN.replace(/\/$/, ""),
+    },
+    muteHttpExceptions: true,
+  };
+
   try {
-    const response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+    const response = UrlFetchApp.fetch(url, options);
+
     const data = JSON.parse(response.getContentText());
 
     // 楽天 Books 系 API と Ichiba API で構造が異なるため両方に対応

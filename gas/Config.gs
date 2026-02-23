@@ -48,6 +48,26 @@ const CONFIG = {
       ) || ""
     );
   },
+  get RAKUTEN_ACCESS_KEY() {
+    return (
+      PropertiesService.getScriptProperties().getProperty(
+        "RAKUTEN_ACCESS_KEY",
+      ) || ""
+    );
+  },
+  get RAKUTEN_REFERER() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("rakuten_origin") ||
+      PropertiesService.getScriptProperties().getProperty("base_url") ||
+      "https://gissidebiz-ui.github.io/rktn/html"
+    );
+  },
+  get RAKUTEN_ORIGIN() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("rakuten_origin") ||
+      "https://gissidebiz-ui.github.io"
+    );
+  },
 };
 
 // ================================
@@ -106,6 +126,16 @@ const THREADS_API_CONFIG = {
   BASE_URL: "https://graph.threads.net/v1.0",
   PUBLISH_WAIT_MS: 5000,
   REPLY_DELAY_MS: 3000,
+};
+
+const RAKUTEN_API_CONFIG = {
+  DOMAIN: "openapi.rakuten.co.jp",
+  get REFERER() {
+    return CONFIG.RAKUTEN_REFERER;
+  },
+  get ORIGIN() {
+    return CONFIG.RAKUTEN_ORIGIN;
+  },
 };
 
 const SHEET_COLUMNS = {

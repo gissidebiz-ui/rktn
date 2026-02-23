@@ -21,9 +21,14 @@ class InputCSVGenerator:
         """
         self.container = container or get_container()
         self.accounts = self.container.get_accounts()
-        self.secrets = self.container.get_secrets()
-        self.application_id = self.secrets.get("rakuten_application_id", "")
-        self.affiliate_id = self.secrets.get("rakuten_affiliate_id", "")
+        self.secrets = self.container.get_secrets()        # APIキーなどの取得
+        self.application_id = self.secrets.get("rakuten_application_id")
+        self.access_key = self.secrets.get("rakuten_access_key")
+        self.affiliate_id = self.secrets.get("rakuten_affiliate_id")
+        # Referer/Origin は新仕様で必須。一元管理のため rakuten_origin を優先使用
+        self.referer = self.secrets.get("rakuten_origin")
+        self.origin = self.referer.rstrip("/")
+
     
     def remove_dup(self, items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """取得したアイテムリストから重複を排除します。
@@ -86,29 +91,64 @@ class InputCSVGenerator:
         target_count = int(query_params.get('hits', [self.DEFAULT_ITEM_NUM])[0])
 
         # 2. API リクエストの実行
+        # 2026年新仕様に基づき、ドメインとエンドポイントを更新
+        # サービス種類に応じたプレフィックスを付与
+        endpoint_mapping = {
+            "IchibaItem/Search": "ichibams",
+            "IchibaItem/Ranking": "ichibaranking", # Ranking は専用プレフィックス
+            "BooksTotal/Search": "services",      # Books は services のまま
+            "BooksCD/Search": "services",
+            "BooksDVD/Search": "services",
+            "BooksGame/Search": "services",
+            "BooksMagazine/Search": "services",
+            "Travel/HotelRanking": "engine",      # Travel は engine
+            "Travel/KeywordHotelSearch": "engine",
+            "Travel/GetAreaClass": "engine",
+        }
+        
+        new_endpoint = url.replace("app.rakuten.co.jp", "openapi.rakuten.co.jp")
+        
+        # 楽天市場ランキングのバージョン更新 (20170628 -> 20220601)
+        if "IchibaItem/Ranking/20170628" in new_endpoint:
+            new_endpoint = new_endpoint.replace("20170628", "20220601")
+
+        for old_path, prefix in endpoint_mapping.items():
+            if old_path in new_endpoint and f"{prefix}/api/" not in new_endpoint:
+                new_endpoint = new_endpoint.replace("services/api/", f"{prefix}/api/")
+                break
+
+
         params = {
             "format": "json",
             "applicationId": self.application_id,
+            "accessKey": self.access_key,
             "affiliateId": self.affiliate_id,
+        }
+
+        headers = {
+            "Referer": self.referer,
+            "Origin": self.origin
         }
 
         time.sleep(1)  # 短時間での連続アクセスによる API 負荷を軽減
         try:
-            response = requests.get(url, params=params, timeout=10)
+            # 新仕様のエンドポイントとヘッダーを使用してリクエスト
+            response = requests.get(new_endpoint, params=params, headers=headers, timeout=10)
+            if response.status_code != 200:
+                print(f"  [ERROR] Error Response: {response.text}")
             response.raise_for_status()
             data = response.json()
         except Exception as e:
-            # 従来の認証方式が失敗した場合、ヘッダ方式で再試行（最新のセキュリティ要件等に対応）
+            print(f"  [ERROR] APIリクエスト失敗 ({new_endpoint}): {e}")
+
+            # 旧仕様へのフォールバック（移行期間中のみ有効な可能性があるため、エラーログを残す）
             try:
-                headers = {
-                    "X-Rakuten-Application-Id": self.application_id,
-                    "X-Rakuten-Affiliate-Id": self.affiliate_id,
-                }
-                response = requests.get(url, headers=headers, timeout=10)
+                print(f"  [INFO] 旧エンドポイントで再試行します...")
+                response = requests.get(url, params=params, timeout=10)
                 response.raise_for_status()
                 data = response.json()
             except Exception as e2:
-                print(f"  [ERROR] APIリクエスト失敗: {e} / ヘッダ再試行も失敗: {e2}")
+                print(f"  [ERROR] 旧仕様再試行も失敗: {e2}")
                 return []
         
 
@@ -219,6 +259,7 @@ class InputCSVGenerator:
             # APIの負荷制限を考慮し、アカウント内のジャンル取得を最大3並列で実行
             # (楽天APIの1秒に1リクエスト制限を尊重しつつスループットを上げる)
             with ThreadPoolExecutor(max_workers=3) as executor:
+
                 # genre_name, url の順でタプルを受け取る fetch_items_wrapper を定義
                 def fetch_items_wrapper(genre_info):
                     name, url = genre_info
