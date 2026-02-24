@@ -25,15 +25,38 @@ function fetchRakutenItems(keyword, hits) {
     );
   }
 
-  const rawUrl =
-    `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` +
-    `?applicationId=${appId}` +
-    `&accessKey=${accessKey}` +
-    `&affiliateId=${affiliateId}` +
-    `&keyword=${encodeURIComponent(keyword)}` +
-    `&hits=${hits}` +
-    "&sort=-reviewCount" +
-    "&availability=1";
+  // APIタイプ（ichiba, books, travel）に応じてURLとソートを切り替え
+  const apiType = CONFIG.RAKUTEN_API_TYPE;
+  let rawUrl = "";
+  if (apiType === "books") {
+    rawUrl =
+      `https://app.rakuten.co.jp/services/api/BooksTotal/Search/20170404` +
+      `?applicationId=${appId}` +
+      `&accessKey=${accessKey}` +
+      `&affiliateId=${affiliateId}` +
+      `&keyword=${encodeURIComponent(keyword)}` +
+      `&hits=${hits}` +
+      "&sort=sales" +
+      "&availability=1";
+  } else if (apiType === "travel") {
+    rawUrl =
+      `https://app.rakuten.co.jp/services/api/Travel/KeywordHotelSearch/20170426` +
+      `?applicationId=${appId}` +
+      `&accessKey=${accessKey}` +
+      `&affiliateId=${affiliateId}` +
+      `&keyword=${encodeURIComponent(keyword)}` +
+      `&hits=${hits}`;
+  } else {
+    rawUrl =
+      `https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601` +
+      `?applicationId=${appId}` +
+      `&accessKey=${accessKey}` +
+      `&affiliateId=${affiliateId}` +
+      `&keyword=${encodeURIComponent(keyword)}` +
+      `&hits=${hits}` +
+      "&sort=-reviewCount" +
+      "&availability=1";
+  }
 
   const url = convertToRakutenOpenApiUrl(rawUrl);
 
@@ -47,7 +70,7 @@ function fetchRakutenItems(keyword, hits) {
   };
 
   try {
-    Logger.log("[Rakuten] 取得開始 URL: " + url);
+    Logger.log(`[Rakuten] ${apiType} 取得開始 URL: ` + url);
     const response = UrlFetchApp.fetch(url, options);
     const content = response.getContentText();
 
@@ -62,27 +85,37 @@ function fetchRakutenItems(keyword, hits) {
     }
 
     const data = JSON.parse(content);
-    // const data = JSON.parse(response.getContentText());
+    // 構造の差異に対応（Items, items, hotels）
+    const items = data.Items || data.items || data.hotels || [];
 
-    if (!data.Items || data.Items.length === 0) {
-      Logger.log(`[Rakuten] 商品が見つかりません: ${keyword}`);
+    if (items.length === 0) {
+      Logger.log(`[Rakuten] 商品/施設が見つかりません: ${keyword}`);
       return [];
     }
 
-    return data.Items.map(function (item) {
-      const i = item.Item;
+    return items.map(function (item) {
+      // 楽天トラベルの構造（nested hotelBasicInfo）にも対応
+      let i = item.Item || item;
+      if (item.hotel && Array.isArray(item.hotel)) {
+        // KeywordHotelSearch 等のレスポンス
+        const basic = item.hotel.find((h) => h.hotelBasicInfo);
+        i = basic ? basic.hotelBasicInfo : item.hotel[0];
+      } else if (item.hotel) {
+        i = item.hotel;
+      }
+
       return {
-        name: i.itemName || "",
-        url: i.affiliateUrl || i.itemUrl || "",
-        price: String(i.itemPrice || ""),
+        name: i.itemName || i.title || i.hotelName || "",
+        url: i.affiliateUrl || i.itemUrl || i.hotelInformationUrl || "",
+        price: String(i.itemPrice || i.salesPrice || i.hotelMinCharge || ""),
         reviewAvg: String(i.reviewAverage || "0"),
         reviewCount: String(i.reviewCount || "0"),
         pointRate: String(i.pointRate || "1"),
-        caption: i.itemCaption || "",
+        caption: i.itemCaption || i.hotelSpecialFeatures || "",
         imageUrl:
           i.mediumImageUrls && i.mediumImageUrls[0]
             ? i.mediumImageUrls[0].imageUrl
-            : "",
+            : i.hotelImageUrl || i.largeImageUrl || i.mediumImageUrl || "",
       };
     });
   } catch (e) {
@@ -232,6 +265,7 @@ function getRakutenProductByUrl(rakutenApiUrl) {
  * @returns {Object|null} 単一の商品情報、または null
  */
 function searchRakutenProduct(keyword, trendData) {
+  const apiType = CONFIG.RAKUTEN_API_TYPE;
   let products = [];
   if (keyword) {
     const searchKeyword =
@@ -242,17 +276,22 @@ function searchRakutenProduct(keyword, trendData) {
             Math.floor(Math.random() * trendData.keywords.length)
           ]
         : keyword;
-    products = fetchRakutenItems(searchKeyword, 3);
+    products = fetchRakutenItems(searchKeyword, 5);
   }
 
   if (products.length === 0 && trendData && trendData.keywords.length > 0) {
     const fallbackKeyword =
       trendData.keywords[
         Math.floor(Math.random() * trendData.keywords.length)
-      ] || "おすすめ 人気";
-    products = fetchRakutenItems(fallbackKeyword, 3);
-  } else if (products.length === 0) {
-    products = fetchRakutenItems("おすすめ 人気", 3);
+      ] || "人気";
+    products = fetchRakutenItems(fallbackKeyword, 5);
+  }
+
+  if (products.length === 0) {
+    let finalFallback = "おすすめ 人気";
+    if (apiType === "books") finalFallback = "ベストセラー";
+    if (apiType === "travel") finalFallback = "人気 温泉 ホテル";
+    products = fetchRakutenItems(finalFallback, 10);
   }
 
   return products.length > 0
@@ -336,52 +375,72 @@ function generatePostSet(keywordOrUrl, offset = 0) {
       text: postText || `（通常投稿 ${i + 1} の生成に失敗しました）`,
       isThreadStart: i === 0,
     });
-    Utilities.sleep(1500);
+    // レート制限防止のため待機時間を延長 (1.5s -> 3s)
+    Utilities.sleep(3000);
   }
 
   // アフィリエイト投稿を 1件生成
   Logger.log("[PostGenerator] アフィリエイト投稿スロットの生成...");
   let affSuccess = false;
-  try {
-    const product =
-      keywordOrUrl.indexOf("http") === 0
-        ? getRakutenProductByUrl(keywordOrUrl)
-        : searchRakutenProduct(keywordOrUrl, trendData);
+  let product = null;
 
-    if (product) {
-      let affPostText = "";
-      let retries = 0;
-      while (!affPostText && retries < 3) {
-        try {
-          affPostText = generateAffiliatePost(product, trendContext);
-        } catch (genErr) {
-          Logger.log(
-            `[PostGenerator] アフィリエイト生成エラー: ${genErr.message}`,
-          );
-        }
-        if (!affPostText) {
-          Logger.log(
-            `[PostGenerator] アフィリエイト投稿リトライ ${retries + 1}/3`,
-          );
-          Utilities.sleep(1000);
-        }
-        retries++;
+  // 商品取得のリトライ（キーワードを変えて最大3回試行）
+  for (let searchRetry = 0; searchRetry < 3; searchRetry++) {
+    try {
+      let currentKeyword = keywordOrUrl;
+      if (searchRetry > 0 && keywordOrUrl.indexOf("http") !== 0) {
+        // 2回目以降は違うキーワード（トレンドからランダム）を試す
+        currentKeyword =
+          trendData.keywords[
+            Math.floor(Math.random() * trendData.keywords.length)
+          ] || "人気";
       }
-      if (affPostText) {
-        posts.push({
-          type: "affiliate",
-          text: affPostText,
-          isThreadStart: false,
-          productInfo: product,
-        });
-        affSuccess = true;
-      }
-    } else {
-      Logger.log("[PostGenerator] !! アフィリエイト商品の取得に失敗しました。");
+
+      product =
+        currentKeyword.indexOf("http") === 0
+          ? getRakutenProductByUrl(currentKeyword)
+          : searchRakutenProduct(currentKeyword, trendData);
+
+      if (product) break;
+      Logger.log(`[PostGenerator] 商品取得リトライ ${searchRetry + 1}/3...`);
+      Utilities.sleep(1000);
+    } catch (e) {
+      Logger.log(`[PostGenerator] 商品取得エラー: ${e.message}`);
     }
-  } catch (e) {
+  }
+
+  if (product) {
+    let affPostText = "";
+    let retries = 0;
+    while (!affPostText && retries < 5) {
+      // リトライ回数を5回に増加
+      try {
+        affPostText = generateAffiliatePost(product, trendContext);
+      } catch (genErr) {
+        Logger.log(
+          `[PostGenerator] アフィリエイト生成エラー: ${genErr.message}`,
+        );
+      }
+      if (!affPostText) {
+        Logger.log(
+          `[PostGenerator] アフィリエイト投稿リトライ ${retries + 1}/5`,
+        );
+        Utilities.sleep(2000);
+      }
+      retries++;
+    }
+    if (affPostText) {
+      posts.push({
+        type: "affiliate",
+        text: affPostText,
+        isThreadStart: false,
+        productInfo: product,
+      });
+      affSuccess = true;
+    }
+  } else {
     Logger.log(
-      `[PostGenerator] アフィリエイト生成中にエラーが発生しました: ${e.message}`,
+      "[PostGenerator] !! 複数回試行しましたがアフィリエイト商品の取得に失敗しました。",
     );
   }
 
@@ -439,7 +498,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
  * 通常投稿を生成
  */
 function generateNormalPost(trendData, offset) {
-  const styles = [
+  const defaultStyles = [
     "共感・あるある（読者が「わかる」と頷く内容）",
     "有益な知恵袋（意外と知らないライフハック）",
     "失敗からの学び（親近感と教訓）",
@@ -447,7 +506,17 @@ function generateNormalPost(trendData, offset) {
     "マインドセット（前向きになれる考え方）",
     "ガジェット/アプリ紹介（使いこなし術）",
     "質問・アンケート型（リプライを促す構成）",
+    "名言と一言（心に響く言葉と短い添え文）",
+    "ユーモア（くすっと笑える日常のネタ）",
+    "グルメ・レシピ（簡単・時短でおいしい食の話題）",
+    "旅行・観光スポット（いつか行きたい素敵な場所）",
+    "前向きメッセージ（明日が楽しみになる言葉）",
+    "プチ贅沢（自分へのご褒美や小さな幸せ）",
+    "癒しのひととき（リラックスできる習慣やアイテム）",
   ];
+  const configStyles = POST_CONFIG.NORMAL_POST_STYLES;
+  const styles = configStyles.length > 0 ? configStyles : defaultStyles;
+
   const style = styles[offset % styles.length];
   const focusKeyword =
     trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
@@ -523,7 +592,7 @@ ${trendContext}
 ・システムが後からURL等（約${metaOverhead}文字分）を付与するため、本文メッセージは全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS - metaOverhead - 10}文字程度を目安に作成してください。
 
 【構成指示】
-・#{product.name}の具体的な魅力や使い心地を記述 ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
+・${product.name}の具体的な魅力や使い心地を記述 ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
 ・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
 ・投稿本文のみをそのまま出力してください。
@@ -532,7 +601,8 @@ ${successfulPostsContext}
 `;
 
   let bodyText = "";
-  for (let r = 0; r < 2; r++) {
+  for (let r = 0; r < 3; r++) {
+    // 内部リトライも3回に増加
     bodyText = cleanPostText(callGeminiAPI(prompt));
     // 140文字制限(X)の場合は短めでも受理、Threadsの場合は従来どおり
     const minLen =

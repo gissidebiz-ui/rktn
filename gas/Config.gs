@@ -83,15 +83,25 @@ const CONFIG = {
       "https://gissidebiz-ui.github.io"
     );
   },
+  get RAKUTEN_API_TYPE() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("RAKUTEN_API_TYPE") ||
+      "ichiba"
+    );
+  },
 };
 
 // ================================
 // トレンド解析・ペルソナ設定
 // ================================
 const TREND_CONFIG = {
-  // 【最重要】アカウントのペルソナ。ここを書き換えるだけで投稿内容が激変します
-  TARGET_DEMO:
-    "30代男性、ビジネスマン、効率化・最新ガジェット愛好家。等身大で有益な情報を発信するスタイル。一人称は「僕」で統一してください。",
+  // 【最重要】アカウントのペルソナ。
+  get TARGET_DEMO() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("TARGET_DEMO") ||
+      "30代男性、ビジネスマン、効率化・最新ガジェット愛好家。等身大で有益な情報を発信するスタイル。一人称は「僕」で統一してください。"
+    );
+  },
 
   CACHE_KEY: "TREND_CACHE",
   CACHE_TIMESTAMP_KEY: "TREND_CACHE_TS",
@@ -139,6 +149,21 @@ const POST_CONFIG = {
   // --- 分析・改善設定 ---
   ANALYZE_DAYS_BACK: 7, // 過去何日間の投稿を分析対象にするか
   HIGH_PERFORMANCE_LIMIT: 5, // 優秀な投稿として抽出する数
+
+  get NORMAL_POST_STYLES() {
+    const raw =
+      PropertiesService.getScriptProperties().getProperty("NORMAL_POST_STYLES");
+    return raw
+      ? raw
+          .split(",")
+          .map(function (s) {
+            return s.trim();
+          })
+          .filter(function (s) {
+            return s !== "";
+          })
+      : [];
+  },
 };
 
 // ================================
@@ -147,8 +172,8 @@ const POST_CONFIG = {
 const GEMINI_CONFIG = {
   MODEL: "gemini-2.0-flash",
   BASE_URL: "https://generativelanguage.googleapis.com/v1beta/models/",
-  MAX_RETRIES: 2, // タイムアウト防止のため制限
-  RETRY_DELAY_MS: 1000,
+  MAX_RETRIES: 5, // レート制限対策で増やす
+  RETRY_DELAY_MS: 2000,
 };
 
 // Threads API 設定（互換性のため残存）

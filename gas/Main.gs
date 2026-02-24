@@ -265,8 +265,8 @@ function generateAndSchedule(rakutenUrl) {
         allPostObjects.push.apply(allPostObjects, postSet);
       }
 
-      // API レート制限対策としてセット間に少し待機
-      if (i < 3) Utilities.sleep(2000);
+      // API レート制限対策としてセット間に待機
+      if (i < 3) Utilities.sleep(5000);
     }
 
     if (allPostObjects.length === 0) {

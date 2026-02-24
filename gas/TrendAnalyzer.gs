@@ -48,6 +48,16 @@ function callGeminiAPI(prompt) {
         lastError = `HTTP ${statusCode}: ${content}`;
         Logger.log(`[Gemini] エラー (${statusCode}): ${content}`);
 
+        // 429 (Rate Limit) の場合は待機時間を長めにする
+        if (statusCode === 429) {
+          const waitTime = Math.pow(2, attempt) * 2000; // 指数関数的バックオフ (4s, 8s...)
+          Logger.log(
+            `[Gemini] レート制限に達しました。${waitTime / 1000}秒待機してリトライします（試行 ${attempt}/${GEMINI_CONFIG.MAX_RETRIES}）`,
+          );
+          Utilities.sleep(waitTime);
+          continue;
+        }
+
         // セーフティなどの理由で拒否された場合の詳細把握用
         if (json.promptFeedback) {
           Logger.log(
@@ -61,7 +71,7 @@ function callGeminiAPI(prompt) {
     }
 
     if (attempt < GEMINI_CONFIG.MAX_RETRIES) {
-      Utilities.sleep(GEMINI_CONFIG.RETRY_DELAY_MS);
+      Utilities.sleep(GEMINI_CONFIG.RETRY_DELAY_MS * attempt);
     }
   }
 
