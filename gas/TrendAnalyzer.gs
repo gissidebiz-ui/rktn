@@ -48,11 +48,13 @@ function callGeminiAPI(prompt) {
         lastError = `HTTP ${statusCode}: ${content}`;
         Logger.log(`[Gemini] エラー (${statusCode}): ${content}`);
 
-        // 429 (Rate Limit) の場合は待機時間を長めにする
-        if (statusCode === 429) {
-          const waitTime = Math.pow(2, attempt) * 2000; // 指数関数的バックオフ (4s, 8s...)
+        // 429 (Rate Limit) または 500番台サーバーエラー等の場合は待機時間を長めにする
+        if (statusCode === 429 || statusCode >= 500) {
+          const baseMs = GEMINI_CONFIG.BASE_BACKOFF_MS || 4000;
+          // 有料プランでの一時的な輻輳を考慮し、初期待機8秒から開始するなど長めの設定
+          const waitTime = Math.pow(2, attempt) * baseMs;
           Logger.log(
-            `[Gemini] レート制限に達しました。${waitTime / 1000}秒待機してリトライします（試行 ${attempt}/${GEMINI_CONFIG.MAX_RETRIES}）`,
+            `[Gemini] HTTP ${statusCode} を検知しました。${waitTime / 1000}秒待機してリトライします（試行 ${attempt}/${GEMINI_CONFIG.MAX_RETRIES}）`,
           );
           Utilities.sleep(waitTime);
           continue;

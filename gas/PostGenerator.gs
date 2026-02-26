@@ -353,31 +353,25 @@ function generatePostSet(keywordOrUrl, offset = 0) {
   const trendContext = buildTrendContext(trendData);
   const posts = [];
 
-  // 通常投稿を 3件生成
+  // 通常投稿を 3件まとめて生成（バッチ処理）
+  Logger.log(
+    `[PostGenerator] 通常投稿 ${POST_CONFIG.NORMAL_POSTS_PER_SET}件のバッチ生成を開始...`,
+  );
+  let batchTexts = generateNormalPostsBatch(
+    trendData,
+    offset,
+    POST_CONFIG.NORMAL_POSTS_PER_SET,
+  );
+
   for (let i = 0; i < POST_CONFIG.NORMAL_POSTS_PER_SET; i++) {
-    Logger.log(
-      `[PostGenerator] 通常投稿 ${i + 1}/${POST_CONFIG.NORMAL_POSTS_PER_SET} 生成中...`,
-    );
-    let postText = "";
-    let retries = 0;
-    while (!postText && retries < 3) {
-      postText = generateNormalPost(trendData, offset + i);
-      if (!postText) {
-        Logger.log(
-          `[PostGenerator] 通常投稿 ${i + 1} リトライ ${retries + 1}/3`,
-        );
-        Utilities.sleep(1000);
-      }
-      retries++;
-    }
     posts.push({
       type: "normal",
-      text: postText || `（通常投稿 ${i + 1} の生成に失敗しました）`,
+      text: batchTexts[i] || `（通常投稿 ${i + 1} の生成に失敗しました）`,
       isThreadStart: i === 0,
     });
-    // レート制限防止のため待機時間を延長 (1.5s -> 3s)
-    Utilities.sleep(3000);
   }
+  // API レート制限対策として待機 (バッチ処理によりリクエスト数は減ったものの念のため確保)
+  Utilities.sleep(5000);
 
   // アフィリエイト投稿を 1件生成
   Logger.log("[PostGenerator] アフィリエイト投稿スロットの生成...");
@@ -454,7 +448,9 @@ function generatePostSet(keywordOrUrl, offset = 0) {
       let retries = 0;
       while (!fallbackText && retries < 3) {
         try {
-          fallbackText = generateNormalPost(trendData, offset + 3);
+          // フォールバック用に1件だけ生成
+          const fbTexts = generateNormalPostsBatch(trendData, offset + 3, 1);
+          fallbackText = fbTexts[0] || "";
         } catch (fbErr) {
           Logger.log(
             `[PostGenerator] フォールバック生成エラー: ${fbErr.message}`,
@@ -464,7 +460,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
           Logger.log(
             `[PostGenerator] フォールバック通常投稿リトライ ${retries + 1}/3`,
           );
-          Utilities.sleep(1000);
+          Utilities.sleep(2000);
         }
         retries++;
       }
@@ -495,9 +491,10 @@ function generatePostSet(keywordOrUrl, offset = 0) {
 }
 
 /**
- * 通常投稿を生成
+ * 通常投稿を複数件まとめてバッチ生成する
+ * 1回のリクエストで複数件分のテキストを配列で返す
  */
-function generateNormalPost(trendData, offset) {
+function generateNormalPostsBatch(trendData, offset, count) {
   const defaultStyles = [
     "共感・あるある（読者が「わかる」と頷く内容）",
     "有益な知恵袋（意外と知らないライフハック）",
@@ -517,7 +514,6 @@ function generateNormalPost(trendData, offset) {
   const configStyles = POST_CONFIG.NORMAL_POST_STYLES;
   const styles = configStyles.length > 0 ? configStyles : defaultStyles;
 
-  const style = styles[offset % styles.length];
   const focusKeyword =
     trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
     "生産性";
@@ -526,40 +522,108 @@ function generateNormalPost(trendData, offset) {
 
   const platformName =
     POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
+
+  // X（Twitter）専用の構成ヒント
+  const xStructureHints =
+    POST_CONFIG.PLATFORM === "twitter"
+      ? `
+【X（Twitter）専用 構成ルール】
+・1行目に「結論」または「共感を呼ぶ一言」を置いてください。タイムラインで目を止めてもらえるかが勝負です。
+・改行を効果的に使い、スマホ画面で読みやすいレイアウトにしてください。
+・箇条書き（・や→）を活用し、情報密度と視認性を両立させてください。
+・語尾を体言止めや「〜だよね」等の口語にして、Xらしいテンポ感を出してください。
+・全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字は非常に少ないため、無駄な修飾語や接続詞を徹底的にカットしてください。
+`
+      : "";
+
+  let instructions = "";
+  for (let i = 0; i < count; i++) {
+    const style = styles[(offset + i) % styles.length];
+    instructions += `\n【投稿${i + 1}の指示】\n・テーマ: 「${focusKeyword}」を自然な形で組み込むこと\n・スタイル: 「${style}」\n`;
+  }
+
   const prompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
 
 【重要制約】
 ・「テーマ：」や「生産性：」などのタイトル・見出しは一切不要です。冒頭から本文を開始してください。
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
 ・現在は${month}月です。必ずこの時期に相応しい内容にしてください。
-・投稿本文のみをそのまま出力してください。
+・投稿本文のみを出力してください。
 ・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
 ・一人称（自分自身の呼び方）は必ず「僕」で統一してください。
-
+${xStructureHints}
 【★文字数制限【厳守】★】
-・合計で全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内に収めてください。
+・各投稿はそれぞれ必ず全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内に収めてください。
 ・短くインパクトのある文章を心がけてください。
 
 【今回の指示】
-・テーマ: 「${focusKeyword}」を自然な形で本文に組み込んでください。
-・スタイル: 「${style}」
-・ハッシュタグは1個のみ。絵文字は控えめに（1つまで）。
-・読者に寄り添う「等身大」のトーンで、${platformName}らしいテンポ感のある文章を生成してください。
+以下の条件に従い、${count}件の投稿テキストを生成してください。
+ハッシュタグは各投稿1個のみ。絵文字は控えめに（各1つまで）。
+読者に寄り添う「等身大」のトーンで、${platformName}らしいテンポ感のある文章を生成してください。
+
+【出力形式（厳守）】
+以下の区切り文字「===POST===」で各投稿を厳密に区切って出力してください。他の説明文は不要です。
+（例）
+投稿1の出力テキスト
+===POST===
+投稿2の出力テキスト
+===POST===
+...
+
+${instructions}
 ${successfulPostsContext}
 `;
 
-  let text = cleanPostText(callGeminiAPI(prompt));
+  let batchResult = [];
+  let retries = 0;
 
-  // 最終文字数チェックと切り詰めロジック
-  const max = POST_CONFIG.NORMAL_POST_MAX_CHARS;
-  if (text.length > max) {
-    Logger.log(
-      `[PostGenerator] 通常投稿が制限を超過(${text.length}/${max})。切り詰めます。`,
-    );
-    text = text.substring(0, max - 3) + "...";
+  while (batchResult.length < count && retries < 3) {
+    try {
+      const rawText = callGeminiAPI(prompt);
+      const rawPosts = rawText
+        .split("===POST===")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      batchResult = [];
+      for (let i = 0; i < count; i++) {
+        if (rawPosts[i]) {
+          let text = cleanPostText(rawPosts[i]);
+          const max = POST_CONFIG.NORMAL_POST_MAX_CHARS;
+          if (text.length > max) {
+            Logger.log(
+              `[PostGenerator] バッチ: 通常投稿 ${i + 1} が制限を超過(${text.length}/${max})。切り詰めます。`,
+            );
+            text = text.substring(0, max - 3) + "...";
+          }
+          batchResult.push(text);
+        } else {
+          batchResult.push(""); // 失敗時は空文字
+        }
+      }
+
+      const successCount = batchResult.filter((t) => t.length > 0).length;
+      if (successCount >= count) {
+        break; // すべて成功
+      } else {
+        Logger.log(
+          `[PostGenerator] バッチ生成 ${successCount}/${count} 成功、欠損があるためリトライします。`,
+        );
+        Utilities.sleep(2000);
+      }
+    } catch (e) {
+      Logger.log(`[PostGenerator] バッチ生成エラー: ${e.message}`);
+      Utilities.sleep(2000);
+    }
+    retries++;
   }
 
-  return text;
+  // 足りない場合は空文字でパディング
+  while (batchResult.length < count) {
+    batchResult.push("");
+  }
+
+  return batchResult;
 }
 
 /**
@@ -574,6 +638,21 @@ function generateAffiliatePost(product, trendContext) {
   const urlCharCount =
     POST_CONFIG.PLATFORM === "twitter" ? 23 : product.url.length;
   const metaOverhead = urlCharCount + 2; // 改行等のバッファ（#PR削除）
+  const bodyCharTarget =
+    POST_CONFIG.AFFILIATE_POST_MAX_CHARS - metaOverhead - 10;
+
+  // X（Twitter）専用のアフィリエイト構成ヒント（Threadsの場合は空文字）
+  const xAffHints =
+    POST_CONFIG.PLATFORM === "twitter"
+      ? `
+【X（Twitter）専用 構成ルール】
+・1行目に「おっ」と思わせるフック（体験談・数字・意外性）を入れてください。
+・商品の魅力を1〜2点に絞り、箇条書きではなく短い文で伝えてください。
+・URLの前に改行を入れ、タップしやすくしてください。
+・本文は全角${bodyCharTarget}文字以内に収めてください（URLはシステムが自動付与します）。
+・語尾は口語（〜だよ / 〜してみて）で統一してください。
+`
+      : "";
 
   const prompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層に向けて、本当に良いモノだけを勧めるキュレーターです。
 
@@ -586,10 +665,10 @@ function generateAffiliatePost(product, trendContext) {
 
 【文脈情報】
 ${trendContext}
-
+${xAffHints}
 【★文字数制限【厳守】★】
 ・URLとタグを含めた最終的な投稿を、全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS}文字以内に収める必要があります。
-・システムが後からURL等（約${metaOverhead}文字分）を付与するため、本文メッセージは全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS - metaOverhead - 10}文字程度を目安に作成してください。
+・システムが後からURL等（約${metaOverhead}文字分）を付与するため、本文メッセージは全角${bodyCharTarget}文字程度を目安に作成してください。
 
 【構成指示】
 ・${product.name}の具体的な魅力や使い心地を記述 ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
