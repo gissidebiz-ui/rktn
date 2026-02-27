@@ -89,6 +89,19 @@ const CONFIG = {
       "ichiba"
     );
   },
+  get THREADS_USER_ID() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("THREADS_USER_ID") ||
+      ""
+    );
+  },
+  get THREADS_ACCESS_TOKEN() {
+    return (
+      PropertiesService.getScriptProperties().getProperty(
+        "THREADS_ACCESS_TOKEN",
+      ) || ""
+    );
+  },
 };
 
 // ================================
@@ -182,12 +195,12 @@ const GEMINI_CONFIG = {
   BASE_BACKOFF_MS: 4000, // 429エラー時の指数バックオフ基礎時間
 };
 
-// Threads API 設定（互換性のため残存）
-// const THREADS_API_CONFIG = {
-//   BASE_URL: "https://graph.threads.net/v1.0",
-//   PUBLISH_WAIT_MS: 5000,
-//   REPLY_DELAY_MS: 3000,
-// };
+// Threads API 設定
+const THREADS_API_CONFIG = {
+  BASE_URL: "https://graph.threads.net/v1.0",
+  PUBLISH_WAIT_MS: 5000,
+  REPLY_DELAY_MS: 3000,
+};
 
 const TWITTER_API_CONFIG = {
   TWEET_ENDPOINT: "https://api.twitter.com/2/tweets",
