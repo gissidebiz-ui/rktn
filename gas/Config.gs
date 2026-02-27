@@ -129,7 +129,12 @@ const SCHEDULE_CONFIG = {
 const POST_CONFIG = {
   // ターゲットプラットフォーム ('threads' または 'twitter')
   // ※ ここを書き換えることで、文字数制限やプロンプトのトーンが自動で切り替わります
-  PLATFORM: "twitter",
+  get PLATFORM() {
+    return (
+      PropertiesService.getScriptProperties().getProperty("PLATFORM") ||
+      "twitter"
+    );
+  },
 
   get NORMAL_POST_MAX_CHARS() {
     return this.PLATFORM === "twitter" ? 130 : 500;

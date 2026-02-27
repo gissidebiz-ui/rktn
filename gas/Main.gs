@@ -21,11 +21,12 @@
  */
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu("🐦 X 自動投稿")
+  const platformName = POST_CONFIG.PLATFORM === "threads" ? "Threads" : "X";
+  ui.createMenu(`🐦 ${platformName} 自動投稿`)
     .addItem("📝 セット生成（トレンド自動）", "menuGenerateTrends")
     .addItem("🔗 セット生成（楽天URL指定）", "menuGenerateByUrl")
     .addSeparator()
-    .addItem("🚀 X へ一括投稿", "menuPublishToTwitter")
+    .addItem(`🚀 ${platformName} へ一括投稿`, "menuPublishToSocial")
     .addItem("📊 統計表示", "showStats")
     .addSeparator()
     .addItem("⚙️ トリガーを再設定", "resetTriggers")
@@ -63,18 +64,25 @@ function menuGenerateByUrl() {
 }
 
 /**
- * メニュー用: X（Twitter）へ一括投稿 (未投稿分をすべて投稿)
+ * メニュー用: 指定SNSへ一括投稿 (未投稿分をすべて投稿)
  */
-function menuPublishToTwitter() {
+function menuPublishToSocial() {
   const set = getNextPendingPostSet();
   if (!set) {
     SpreadsheetApp.getUi().alert("投稿待ちのセットが見つかりませんでした。");
     return;
   }
 
-  const results = publishPostSetToTwitter(set);
+  let results;
+  const platformName = POST_CONFIG.PLATFORM === "threads" ? "Threads" : "X";
+  if (POST_CONFIG.PLATFORM === "threads") {
+    results = publishPostSetAsThread(set);
+  } else {
+    results = publishPostSetToTwitter(set);
+  }
+
   updatePostStatusBatch(results);
-  SpreadsheetApp.getUi().alert("X への一括投稿が完了しました。");
+  SpreadsheetApp.getUi().alert(`${platformName} への一括投稿が完了しました。`);
 }
 
 /**
@@ -344,10 +352,17 @@ function processScheduledPosts() {
       return;
     }
 
-    Logger.log(`[Main] 単一投稿を実行: ${post.row}行目 「${post.type}」`);
+    Logger.log(
+      `[Main] 単一投稿を実行: ${post.row}行目 「${post.type}」, プラットフォーム: ${POST_CONFIG.PLATFORM}`,
+    );
 
-    // 投稿実行（X/Twitter）
-    const postId = postToTwitter(post.text);
+    // 投稿実行
+    let postId;
+    if (POST_CONFIG.PLATFORM === "threads") {
+      postId = publishTextPost(post.text);
+    } else {
+      postId = postToTwitter(post.text);
+    }
 
     // 結果を反映
     updatePostStatusBatch([
@@ -436,17 +451,22 @@ function runFullTest() {
     Logger.log(`❌ スプレッドシート管理: ${e.message}`);
   }
 
-  // 5. Twitter API テスト
-  Logger.log("\n--- 5. Twitter API テスト ---");
+  // 5. SNS API テスト
+  Logger.log("\n--- 5. SNS API テスト ---");
   try {
     if (DRY_RUN) {
-      const testId = postToTwitter("テスト投稿です #test");
-      Logger.log(`✅ Twitter API: OK (DRY_RUN ID: ${testId})`);
+      if (POST_CONFIG.PLATFORM === "threads") {
+        const testId = publishTextPost("テスト投稿です #test");
+        Logger.log(`✅ Threads API: OK (DRY_RUN ID: ${testId})`);
+      } else {
+        const testId = postToTwitter("テスト投稿です #test");
+        Logger.log(`✅ Twitter API: OK (DRY_RUN ID: ${testId})`);
+      }
     } else {
-      Logger.log("⚠️ Twitter API: DRY_RUN=false のためスキップしました");
+      Logger.log("⚠️ SNS API: DRY_RUN=false のためスキップしました");
     }
   } catch (e) {
-    Logger.log(`❌ Twitter API: ${e.message}`);
+    Logger.log(`❌ SNS API: ${e.message}`);
   }
 
   Logger.log("\n========================================");
