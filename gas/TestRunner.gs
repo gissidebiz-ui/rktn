@@ -13,7 +13,10 @@ function runAllUnitTests() {
   let failed = 0;
 
   // テストケース群
-  const tests = [testSchedulerLogic_NoReverseTime];
+  const tests = [
+    testSchedulerLogic_NoReverseTime,
+    testSchedulerLogic_ApproxOneHourInterval,
+  ];
 
   tests.forEach((testFunc) => {
     try {
@@ -52,6 +55,45 @@ function assertTrue(condition, message) {
 // ----------------------------------------
 // 個別テストケース
 // ----------------------------------------
+
+/**
+ * [テスト] 約1時間ごとに投稿がスケジュールされることを確認する
+ */
+function testSchedulerLogic_ApproxOneHourInterval() {
+  const mockPostSet = [
+    { type: "normal", text: "通常1", scheduledTime: null },
+    { type: "normal", text: "通常2", scheduledTime: null },
+    { type: "affiliate_hook", text: "フック", scheduledTime: null },
+    { type: "affiliate_link", text: "リンク", scheduledTime: null },
+  ];
+
+  const startTime = new Date(2026, 0, 1, 10, 0, 0); // 10:00開始を想定
+  const scheduled = generateSchedule(mockPostSet, startTime);
+
+  const toDate = (str) => new Date(str.replace(/-/g, "/"));
+  const times = scheduled.map((p) => toDate(p.scheduledTime).getTime());
+
+  // 1件目は開始時刻から少し（最大5分程度）後であることを確認
+  const firstDiffMin = (times[0] - startTime.getTime()) / (60 * 1000);
+  assertTrue(
+    firstDiffMin >= 0 && firstDiffMin <= 5,
+    `最初の投稿は開始時刻の直後(0〜5分以内)であること (実際: ${firstDiffMin}分後)`,
+  );
+
+  // 2件目は1件目から約60〜65分後
+  const diff1to2 = (times[1] - times[0]) / (60 * 1000);
+  assertTrue(
+    diff1to2 >= 60 && diff1to2 <= 65,
+    `2件目の投稿は1件目から60〜65分後であること (実際: ${diff1to2}分後)`,
+  );
+
+  // 3件目は2件目から約60〜65分後
+  const diff2to3 = (times[2] - times[1]) / (60 * 1000);
+  assertTrue(
+    diff2to3 >= 60 && diff2to3 <= 65,
+    `3件目(フック)の投稿は2件目から60〜65分後であること (実際: ${diff2to3}分後)`,
+  );
+}
 
 /**
  * [テスト] フックとリンクの時間逆転がないことを確認する

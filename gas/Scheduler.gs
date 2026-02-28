@@ -107,9 +107,6 @@ function generateSchedule(postSet, startTime = null) {
       return; // baseTimeは進めない
     }
 
-    // 次の投稿時間を 60分後として計算
-    baseTime = new Date(baseTime.getTime() + 60 * 60 * 1000);
-
     // 夜間（24:00〜07:00）の場合は翌朝にスキップ
     if (
       baseTime.getHours() < SCHEDULE_CONFIG.QUIET_HOURS_END ||
@@ -135,6 +132,9 @@ function generateSchedule(postSet, startTime = null) {
         "yyyy/MM/dd HH:mm",
       ),
     });
+
+    // 次回の投稿時間を 現在の予定時間から 60分後 として計算（間隔が1時間を切らないようにする）
+    baseTime = new Date(scheduledTime.getTime() + 60 * 60 * 1000);
   });
 
   return result;
