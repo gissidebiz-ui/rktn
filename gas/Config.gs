@@ -21,86 +21,93 @@ const CONFIG = {
     return (
       PropertiesService.getScriptProperties().getProperty("GEMINI_API_KEY") ||
       ""
-    );
+    ).trim();
   },
   get TWITTER_API_KEY() {
     return (
       PropertiesService.getScriptProperties().getProperty("TWITTER_API_KEY") ||
       ""
-    );
+    ).trim();
   },
   get TWITTER_API_SECRET() {
     return (
       PropertiesService.getScriptProperties().getProperty(
         "TWITTER_API_SECRET",
       ) || ""
-    );
+    ).trim();
   },
   get TWITTER_ACCESS_TOKEN() {
     return (
       PropertiesService.getScriptProperties().getProperty(
         "TWITTER_ACCESS_TOKEN",
       ) || ""
-    );
+    ).trim();
   },
   get TWITTER_ACCESS_SECRET() {
     return (
       PropertiesService.getScriptProperties().getProperty(
         "TWITTER_ACCESS_SECRET",
       ) || ""
-    );
+    ).trim();
   },
   get RAKUTEN_APP_ID() {
     return (
       PropertiesService.getScriptProperties().getProperty("RAKUTEN_APP_ID") ||
       ""
-    );
+    ).trim();
   },
   get RAKUTEN_AFFILIATE_ID() {
     return (
       PropertiesService.getScriptProperties().getProperty(
         "RAKUTEN_AFFILIATE_ID",
       ) || ""
-    );
+    ).trim();
   },
   get RAKUTEN_ACCESS_KEY() {
     return (
       PropertiesService.getScriptProperties().getProperty(
         "RAKUTEN_ACCESS_KEY",
       ) || ""
-    );
+    ).trim();
   },
   get RAKUTEN_REFERER() {
     return (
-      PropertiesService.getScriptProperties().getProperty("rakuten_origin") ||
-      PropertiesService.getScriptProperties().getProperty("base_url") ||
+      (
+        PropertiesService.getScriptProperties().getProperty("rakuten_origin") ||
+        ""
+      ).trim() ||
+      (
+        PropertiesService.getScriptProperties().getProperty("base_url") || ""
+      ).trim() ||
       "https://gissidebiz-ui.github.io/rktn/html"
     );
   },
   get RAKUTEN_ORIGIN() {
     return (
-      PropertiesService.getScriptProperties().getProperty("rakuten_origin") ||
-      "https://gissidebiz-ui.github.io"
+      (
+        PropertiesService.getScriptProperties().getProperty("rakuten_origin") ||
+        ""
+      ).trim() || "https://gissidebiz-ui.github.io"
     );
   },
   get RAKUTEN_API_TYPE() {
     return (
       PropertiesService.getScriptProperties().getProperty("RAKUTEN_API_TYPE") ||
       "ichiba"
-    );
+    ).trim();
   },
   get THREADS_USER_ID() {
     return (
       PropertiesService.getScriptProperties().getProperty("THREADS_USER_ID") ||
       ""
-    );
+    ).trim();
   },
   get THREADS_ACCESS_TOKEN() {
     return (
       PropertiesService.getScriptProperties().getProperty(
         "THREADS_ACCESS_TOKEN",
       ) || ""
-    );
+    ).trim();
   },
 };
 

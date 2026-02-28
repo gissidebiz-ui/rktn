@@ -121,7 +121,9 @@ function postToTwitter(text, parentId) {
   const url = TWITTER_API_CONFIG.TWEET_ENDPOINT;
 
   if (DRY_RUN) {
-    Logger.log(`[TwitterAPI][DRY] 投稿 (parent: ${parentId || "なし"}): ${text.substring(0, 50)}...`);
+    Logger.log(
+      `[TwitterAPI][DRY] 投稿 (parent: ${parentId || "なし"}): ${text.substring(0, 50)}...`,
+    );
     return "dry_run_tweet_" + Date.now();
   }
 
@@ -143,13 +145,53 @@ function postToTwitter(text, parentId) {
     muteHttpExceptions: true,
   };
 
-  const response = UrlFetchApp.fetch(url, options);
-  const statusCode = response.getResponseCode();
-  const responseBody = JSON.parse(response.getContentText());
+  let response;
+  let statusCode;
+  let responseBody;
+  let retryCount = 0;
+  const maxRetries = 3;
 
-  if (statusCode === 201 && responseBody.data && responseBody.data.id) {
-    Logger.log(`[TwitterAPI] 投稿成功: ID=${responseBody.data.id}`);
-    return responseBody.data.id;
+  while (retryCount <= maxRetries) {
+    try {
+      response = UrlFetchApp.fetch(url, options);
+      statusCode = response.getResponseCode();
+
+      const contentText = response.getContentText();
+      try {
+        responseBody = JSON.parse(contentText);
+      } catch (e) {
+        responseBody = { detail: contentText || "JSONパースエラー" };
+      }
+
+      if (statusCode === 201 && responseBody.data && responseBody.data.id) {
+        Logger.log(`[TwitterAPI] 投稿成功: ID=${responseBody.data.id}`);
+        return responseBody.data.id;
+      }
+
+      // 500番台（Twitter側の一時的な障害）ならリトライ
+      if (statusCode >= 500 && statusCode < 600 && retryCount < maxRetries) {
+        retryCount++;
+        const waitTime = retryCount * 3000; // 3秒, 6秒, 9秒待機
+        Logger.log(
+          `[TwitterAPI] 一時的なエラー(HTTP ${statusCode})。${waitTime}ms後に再試行します (${retryCount}/${maxRetries})`,
+        );
+        Utilities.sleep(waitTime);
+        continue;
+      }
+
+      break; // 成功、またはリトライ対象外のエラーならループを抜ける
+    } catch (e) {
+      // ネットワーク切断などの例外
+      if (retryCount < maxRetries) {
+        retryCount++;
+        Logger.log(
+          `[TwitterAPI] 通信例外: ${e.message}。再試行します (${retryCount}/${maxRetries})`,
+        );
+        Utilities.sleep(retryCount * 3000);
+        continue;
+      }
+      throw e;
+    }
   }
 
   // エラーハンドリング
@@ -193,7 +235,7 @@ function publishPostSetToTwitter(postSet) {
         row: post.row,
         success: true,
         postId: postId,
-        parentId: parentId
+        parentId: parentId,
       });
       Logger.log(`[TwitterAPI] 成功 ${i + 1}/${postSet.length}: ${postId}`);
       lastTweetId = postId;
