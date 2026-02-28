@@ -1,0 +1,5 @@
+# Ignore clasp config which contains script IDs
+.clasp.json
+
+# Ignore deploy script which contains script IDs
+deploy.ps1

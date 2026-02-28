@@ -88,25 +88,7 @@ function generateSchedule(postSet, startTime = null) {
     ? new Date(startTime.getTime())
     : getInitialStartTime();
 
-  let lastScheduledTime = baseTime; // 実際の予定時刻を保存
-
   postSet.forEach((post, index) => {
-    // アフィリエイトリンク（ツリーの2件目）の場合は直前の[実際の]時間から1〜2分ずらすだけ
-    if (post.type === "affiliate_link") {
-      const scheduledTime = new Date(
-        lastScheduledTime.getTime() + randomInt(1, 2) * 60 * 1000,
-      );
-      result.push({
-        ...post,
-        scheduledTime: Utilities.formatDate(
-          scheduledTime,
-          "Asia/Tokyo",
-          "yyyy/MM/dd HH:mm",
-        ),
-      });
-      return; // baseTimeは進めない
-    }
-
     // 次の投稿時間を 60分後として計算
     baseTime = new Date(baseTime.getTime() + 60 * 60 * 1000);
 
@@ -125,7 +107,6 @@ function generateSchedule(postSet, startTime = null) {
       60 *
       1000;
     const scheduledTime = new Date(baseTime.getTime() + jitterMs);
-    lastScheduledTime = scheduledTime; // 次回用に実際の予定時刻を記録
 
     result.push({
       ...post,

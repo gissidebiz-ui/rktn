@@ -266,47 +266,30 @@ function getRakutenProductByUrl(rakutenApiUrl) {
  */
 function searchRakutenProduct(keyword, trendData) {
   const apiType = CONFIG.RAKUTEN_API_TYPE;
-  // ペルソナに合わせたキーワードをブレンド（商品名に含まれやすい具体的なワードにする）
-  const personaKeywords = [
-    "PC",
-    "ガジェット",
-    "デスク",
-    "スマート",
-    "ビジネス",
-    "収納",
-    "最新",
-  ];
-  const personaKeyword =
-    personaKeywords[Math.floor(Math.random() * personaKeywords.length)];
-
   let products = [];
-
-  // 1. トレンドキーワード ＋ ペルソナ（ヒットすればラッキー）
   if (keyword) {
-    const searchKeyword = keyword + " " + personaKeyword;
+    const searchKeyword =
+      trendData && trendData.keywords.length > 0
+        ? keyword +
+          " " +
+          trendData.keywords[
+            Math.floor(Math.random() * trendData.keywords.length)
+          ]
+        : keyword;
     products = fetchRakutenItems(searchKeyword, 5);
   }
 
-  // 2. 0件の場合は、ペルソナキーワード単独で検索（確実にターゲット商品を狙う）
-  if (products.length === 0) {
-    products = fetchRakutenItems(personaKeyword, 5);
-  }
-
-  // 3. それでも0件の場合は、元のトレンド単独や汎用語にフォールバック
-  if (products.length === 0) {
+  if (products.length === 0 && trendData && trendData.keywords.length > 0) {
     const fallbackKeyword =
-      trendData && trendData.keywords.length > 0
-        ? trendData.keywords[
-            Math.floor(Math.random() * trendData.keywords.length)
-          ]
-        : "おすすめ";
+      trendData.keywords[
+        Math.floor(Math.random() * trendData.keywords.length)
+      ] || "人気";
     products = fetchRakutenItems(fallbackKeyword, 5);
   }
 
-  // 4. 最終フォールバック
   if (products.length === 0) {
-    let finalFallback = "人気 " + personaKeyword;
-    if (apiType === "books") finalFallback = "ビジネス ビジネス書";
+    let finalFallback = "おすすめ 人気";
+    if (apiType === "books") finalFallback = "ベストセラー";
     if (apiType === "travel") finalFallback = "人気 温泉 ホテル";
     products = fetchRakutenItems(finalFallback, 10);
   }
@@ -422,7 +405,6 @@ function generatePostSet(keywordOrUrl, offset = 0) {
 
   if (product) {
     let affPostText = "";
-    let hookPostText = "";
     let retries = 0;
     while (!affPostText && retries < 5) {
       // リトライ回数を5回に増加
@@ -442,30 +424,8 @@ function generatePostSet(keywordOrUrl, offset = 0) {
       retries++;
     }
     if (affPostText) {
-      // 親投稿（フック）の生成
-      try {
-        const platformName =
-          POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
-        const hookPrompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
-これから紹介する商品（${product.name}）のリンクを次に投稿するにあたり、その前フリとなる「惹きつけ用の短い通常投稿（フック）」を1件作成してください。
-【条件】
-・商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
-・全角80文字以内。
-・本文のみを出力し、ハッシュタグは一切不要です。`;
-        hookPostText = cleanPostText(callGeminiAPI(hookPrompt));
-      } catch (e) {
-        Logger.log(`[PostGenerator] フック生成エラー: ${e.message}`);
-        hookPostText = "最近、これについてすごく悩んでたんですよね…！"; // 雑なフォールバック
-      }
-
       posts.push({
-        type: "affiliate_hook",
-        text: hookPostText || "最近、これについてすごく悩んでたんですよね…！",
-        isThreadStart: false,
-      });
-
-      posts.push({
-        type: "affiliate_link",
+        type: "affiliate",
         text: affPostText,
         isThreadStart: false,
         productInfo: product,
@@ -483,19 +443,20 @@ function generatePostSet(keywordOrUrl, offset = 0) {
     Logger.log(
       "[PostGenerator] !! アフィリエイト生成が要件を満たさなかったため、通常投稿でフォールバックします。",
     );
-    let fallbackTexts = [];
+    let fallbackText = "";
     try {
       let retries = 0;
-      while (fallbackTexts.length < 2 && retries < 3) {
+      while (!fallbackText && retries < 3) {
         try {
-          // フォールバック用に2件(フック+アフィ枠分)生成
-          fallbackTexts = generateNormalPostsBatch(trendData, offset + 3, 2);
+          // フォールバック用に1件だけ生成
+          const fbTexts = generateNormalPostsBatch(trendData, offset + 3, 1);
+          fallbackText = fbTexts[0] || "";
         } catch (fbErr) {
           Logger.log(
             `[PostGenerator] フォールバック生成エラー: ${fbErr.message}`,
           );
         }
-        if (fallbackTexts.length < 2) {
+        if (!fallbackText) {
           Logger.log(
             `[PostGenerator] フォールバック通常投稿リトライ ${retries + 1}/3`,
           );
@@ -510,12 +471,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
     }
     posts.push({
       type: "normal",
-      text: fallbackTexts[0] || "（代替通常投稿の生成に失敗しました）",
-      isThreadStart: false,
-    });
-    posts.push({
-      type: "normal",
-      text: fallbackTexts[1] || "（代替通常投稿の生成に失敗しました）",
+      text: fallbackText || "（代替通常投稿の生成に失敗しました）",
       isThreadStart: false,
     });
   }
@@ -690,10 +646,8 @@ function generateAffiliatePost(product, trendContext) {
     POST_CONFIG.PLATFORM === "twitter"
       ? `
 【X（Twitter）専用 構成ルール】
-・これは事前に投稿したフック文に対するリプライ（ツリーの2件目）として投稿されます。
-・「どんな悩みが解決するか」「日々の生活がどう良くなるか」（ベネフィット）を短く具体的に描写してください。
-・末尾には必ず「少しでも気になったらタップしてみて！」「今すぐチェック！」のような行動喚起（CTA）を入れてください。
-・箇条書きではなく短い文で伝えてください。
+・1行目に「おっ」と思わせるフック（体験談・数字・意外性）を入れてください。
+・商品の魅力を1〜2点に絞り、箇条書きではなく短い文で伝えてください。
 ・URLの前に改行を入れ、タップしやすくしてください。
 ・本文は全角${bodyCharTarget}文字以内に収めてください（URLはシステムが自動付与します）。
 ・語尾は口語（〜だよ / 〜してみて）で統一してください。
@@ -717,7 +671,7 @@ ${xAffHints}
 ・システムが後からURL等（約${metaOverhead}文字分）を付与するため、本文メッセージは全角${bodyCharTarget}文字程度を目安に作成してください。
 
 【構成指示】
-・${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
+・${product.name}の具体的な魅力や使い心地を記述 ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
 ・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
 ・投稿本文のみをそのまま出力してください。

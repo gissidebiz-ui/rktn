@@ -317,7 +317,7 @@ function generateAndSchedule(rakutenUrl) {
       return p.type === "normal";
     }).length;
     const affCount = allScheduledPosts.filter(function (p) {
-      return p.type.indexOf("affiliate") !== -1;
+      return p.type === "affiliate";
     }).length;
     writeLog(
       "一括セット生成",
@@ -361,7 +361,7 @@ function processScheduledPosts() {
     if (POST_CONFIG.PLATFORM === "threads") {
       postId = publishTextPost(post.text);
     } else {
-      postId = postToTwitter(post.text, post.parentId);
+      postId = postToTwitter(post.text);
     }
 
     // 結果を反映
@@ -370,7 +370,6 @@ function processScheduledPosts() {
         row: post.row,
         success: true,
         postId: postId,
-        parentId: post.parentId,
       },
     ]);
 

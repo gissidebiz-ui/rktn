@@ -163,18 +163,11 @@ function getNextPendingPost() {
 
     const sched = parseDate(data[i][SHEET_COLUMNS.SCHEDULED_TIME - 1]);
     if (sched <= now && shouldPostNow()) {
-      let parentId = "";
-      const type = data[i][SHEET_COLUMNS.POST_TYPE - 1];
-      if (type === "affiliate_link" && i > 1) { // 直前のフック投稿のIDを取得
-        parentId = String(data[i - 1][SHEET_COLUMNS.TWEET_ID - 1] || "");
-      }
-
       return {
         row: i + 1,
-        type: type,
+        type: data[i][SHEET_COLUMNS.POST_TYPE - 1],
         text: data[i][SHEET_COLUMNS.POST_TEXT - 1],
         isThreadStart: i % 4 === 1, // 3:1 ループなら 2, 6, 10行目...が開始
-        parentId: parentId,
       };
     }
   }

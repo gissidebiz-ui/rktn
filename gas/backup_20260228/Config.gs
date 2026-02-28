@@ -159,9 +159,9 @@ const POST_CONFIG = {
     return this.PLATFORM === "twitter" ? 100 : 500;
   },
 
-  // 黄金比（通常 2 : アフィリフック 1 : アフィリ本体 1）
-  NORMAL_POSTS_PER_SET: 2,
-  AFFILIATE_POSTS_PER_SET: 2,
+  // 黄金比（通常 3 : アフィリエイト 1）
+  NORMAL_POSTS_PER_SET: 3,
+  AFFILIATE_POSTS_PER_SET: 1,
   TOTAL_POSTS_PER_SET: 4,
 
   // --- 分析・改善設定 ---

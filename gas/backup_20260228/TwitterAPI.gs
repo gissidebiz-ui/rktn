@@ -114,24 +114,19 @@ function buildOAuthHeader(method, url, bodyParams) {
 /**
  * テキストを X に投稿する
  * @param {string} text - 投稿テキスト（全角140文字/半角280文字以内）
- * @param {string} parentId - 親ツイートのID（省略可）
  * @returns {string} ツイートID
  */
-function postToTwitter(text, parentId) {
+function postToTwitter(text) {
   const url = TWITTER_API_CONFIG.TWEET_ENDPOINT;
 
   if (DRY_RUN) {
-    Logger.log(`[TwitterAPI][DRY] 投稿 (parent: ${parentId || "なし"}): ${text.substring(0, 50)}...`);
+    Logger.log(`[TwitterAPI][DRY] 投稿: ${text.substring(0, 50)}...`);
     return "dry_run_tweet_" + Date.now();
   }
 
   const authHeader = buildOAuthHeader("POST", url, {});
 
-  const payloadObj = { text: text };
-  if (parentId) {
-    payloadObj.reply = { in_reply_to_tweet_id: String(parentId) };
-  }
-  const payload = JSON.stringify(payloadObj);
+  const payload = JSON.stringify({ text: text });
 
   const options = {
     method: "post",
@@ -178,25 +173,17 @@ function postToTwitter(text, parentId) {
 function publishPostSetToTwitter(postSet) {
   Logger.log(`[TwitterAPI] 一括投稿開始 (${postSet.length}件)`);
   const results = [];
-  let lastTweetId = "";
 
   for (let i = 0; i < postSet.length; i++) {
     const post = postSet[i];
     try {
-      let parentId = "";
-      if (post.type === "affiliate_link" && lastTweetId) {
-        parentId = lastTweetId;
-      }
-
-      const postId = postToTwitter(post.text, parentId);
+      const postId = postToTwitter(post.text);
       results.push({
         row: post.row,
         success: true,
         postId: postId,
-        parentId: parentId
       });
       Logger.log(`[TwitterAPI] 成功 ${i + 1}/${postSet.length}: ${postId}`);
-      lastTweetId = postId;
 
       // レート制限対策: 投稿間に待機
       if (i < postSet.length - 1) {
@@ -205,7 +192,6 @@ function publishPostSetToTwitter(postSet) {
     } catch (e) {
       Logger.log(`[TwitterAPI] 失敗 ${i + 1}/${postSet.length}: ${e.message}`);
       results.push({ row: post.row, success: false, error: e.message });
-      lastTweetId = ""; // ツリーをリセット
     }
   }
   return results;

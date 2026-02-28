@@ -1,0 +1,5 @@
+backup_20260228/**
+deploy.ps1
+deploy_readme.md
+*.md
+.gitignore
