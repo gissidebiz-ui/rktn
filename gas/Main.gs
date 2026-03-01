@@ -377,6 +377,12 @@ function processScheduledPosts() {
     writeLog("定期投稿実行", "success", `${post.row}行目を投稿しました`);
   } catch (e) {
     Logger.log(`[Main] 投稿プロセスエラー: ${e.message}`);
+    // なぜ: catchだけだと同じ行を無限に再処理してしまうため、ステータスを「error」に更新して再実行を防止する
+    if (typeof post !== "undefined" && post && post.row) {
+      updatePostStatusBatch([
+        { row: post.row, success: false, error: e.message },
+      ]);
+    }
     writeLog("定期投稿プロセス", "error", e.message);
   }
 }

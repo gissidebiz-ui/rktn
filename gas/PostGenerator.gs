@@ -266,48 +266,50 @@ function getRakutenProductByUrl(rakutenApiUrl) {
  */
 function searchRakutenProduct(keyword, trendData) {
   const apiType = CONFIG.RAKUTEN_API_TYPE;
-  // ペルソナに合わせたキーワードをブレンド（商品名に含まれやすい具体的なワードにする）
-  const personaKeywords = [
-    "PC",
-    "ガジェット",
-    "デスク",
-    "スマート",
-    "ビジネス",
-    "収納",
-    "最新",
-  ];
-  const personaKeyword =
-    personaKeywords[Math.floor(Math.random() * personaKeywords.length)];
+
+  // seasonalTopics からランダムに1つ選び、季節キーワードとする
+  const seasonalTopics =
+    trendData && trendData.seasonalTopics && trendData.seasonalTopics.length > 0
+      ? trendData.seasonalTopics
+      : [];
+  const seasonKeyword =
+    seasonalTopics.length > 0
+      ? seasonalTopics[Math.floor(Math.random() * seasonalTopics.length)]
+      : "";
+
+  Logger.log(
+    `[searchRakutenProduct] 季節キーワード: "${seasonKeyword}" (候補数: ${seasonalTopics.length})`,
+  );
 
   let products = [];
 
-  // 1. トレンドキーワード ＋ ペルソナ（ヒットすればラッキー）
-  if (keyword) {
-    const searchKeyword = keyword + " " + personaKeyword;
+  // 第1希望: keyword ＋ seasonKeyword の組み合わせ
+  if (keyword && seasonKeyword) {
+    const searchKeyword = keyword + " " + seasonKeyword;
+    Logger.log(`[searchRakutenProduct] 第1希望で検索: "${searchKeyword}"`);
     products = fetchRakutenItems(searchKeyword, 5);
   }
 
-  // 2. 0件の場合は、ペルソナキーワード単独で検索（確実にターゲット商品を狙う）
-  if (products.length === 0) {
-    products = fetchRakutenItems(personaKeyword, 5);
+  // 第2希望: seasonKeyword 単独
+  if (products.length === 0 && seasonKeyword) {
+    Logger.log(`[searchRakutenProduct] 第2希望で検索: "${seasonKeyword}"`);
+    products = fetchRakutenItems(seasonKeyword, 5);
   }
 
-  // 3. それでも0件の場合は、元のトレンド単独や汎用語にフォールバック
-  if (products.length === 0) {
-    const fallbackKeyword =
-      trendData && trendData.keywords.length > 0
-        ? trendData.keywords[
-            Math.floor(Math.random() * trendData.keywords.length)
-          ]
-        : "おすすめ";
-    products = fetchRakutenItems(fallbackKeyword, 5);
+  // 第3希望: keyword 単独
+  if (products.length === 0 && keyword) {
+    Logger.log(`[searchRakutenProduct] 第3希望で検索: "${keyword}"`);
+    products = fetchRakutenItems(keyword, 5);
   }
 
-  // 4. 最終フォールバック
+  // 第4希望: 最終フォールバック（apiType に応じた汎用キーワード）
   if (products.length === 0) {
-    let finalFallback = "人気 " + personaKeyword;
-    if (apiType === "books") finalFallback = "ビジネス ビジネス書";
-    if (apiType === "travel") finalFallback = "人気 温泉 ホテル";
+    let finalFallback = "人気 おすすめ";
+    if (apiType === "books") finalFallback = "ビジネス ランキング";
+    if (apiType === "travel") finalFallback = "人気 温泉";
+    Logger.log(
+      `[searchRakutenProduct] 第4希望（最終フォールバック）で検索: "${finalFallback}"`,
+    );
     products = fetchRakutenItems(finalFallback, 10);
   }
 
@@ -421,19 +423,18 @@ function generatePostSet(keywordOrUrl, offset = 0) {
   }
 
   if (product) {
-    let affPostText = "";
-    let hookPostText = "";
+    let affPostPair = null;
     let retries = 0;
-    while (!affPostText && retries < 5) {
+    while (!affPostPair && retries < 5) {
       // リトライ回数を5回に増加
       try {
-        affPostText = generateAffiliatePost(product, trendContext);
+        affPostPair = generateAffiliatePostPair(product, trendContext);
       } catch (genErr) {
         Logger.log(
           `[PostGenerator] アフィリエイト生成エラー: ${genErr.message}`,
         );
       }
-      if (!affPostText) {
+      if (!affPostPair) {
         Logger.log(
           `[PostGenerator] アフィリエイト投稿リトライ ${retries + 1}/5`,
         );
@@ -441,32 +442,18 @@ function generatePostSet(keywordOrUrl, offset = 0) {
       }
       retries++;
     }
-    if (affPostText) {
-      // 親投稿（フック）の生成
-      try {
-        const platformName =
-          POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
-        const hookPrompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
-これから紹介する商品（${product.name}）のリンクを次に投稿するにあたり、その前フリとなる「惹きつけ用の短い通常投稿（フック）」を1件作成してください。
-【条件】
-・商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
-・全角80文字以内。
-・本文のみを出力し、ハッシュタグは一切不要です。`;
-        hookPostText = cleanPostText(callGeminiAPI(hookPrompt));
-      } catch (e) {
-        Logger.log(`[PostGenerator] フック生成エラー: ${e.message}`);
-        hookPostText = "最近、これについてすごく悩んでたんですよね…！"; // 雑なフォールバック
-      }
 
+    if (affPostPair) {
       posts.push({
         type: "affiliate_hook",
-        text: hookPostText || "最近、これについてすごく悩んでたんですよね…！",
+        text:
+          affPostPair.parent || "最近、これについてすごく悩んでたんですよね…！",
         isThreadStart: false,
       });
 
       posts.push({
         type: "affiliate_link",
-        text: affPostText,
+        text: affPostPair.child,
         isThreadStart: false,
         productInfo: product,
       });
@@ -671,9 +658,9 @@ ${successfulPostsContext}
 }
 
 /**
- * アフィリエイト投稿を生成
+ * アフィリエイト投稿（親・子のセット）を生成
  */
-function generateAffiliatePost(product, trendContext) {
+function generateAffiliatePostPair(product, trendContext) {
   const month = new Date().getMonth() + 1;
   const successfulPostsContext = buildSuccessfulPostsContext();
   const platformName =
@@ -690,12 +677,12 @@ function generateAffiliatePost(product, trendContext) {
     POST_CONFIG.PLATFORM === "twitter"
       ? `
 【X（Twitter）専用 構成ルール】
-・これは事前に投稿したフック文に対するリプライ（ツリーの2件目）として投稿されます。
-・「どんな悩みが解決するか」「日々の生活がどう良くなるか」（ベネフィット）を短く具体的に描写してください。
-・末尾には必ず「少しでも気になったらタップしてみて！」「今すぐチェック！」のような行動喚起（CTA）を入れてください。
+・子ポストは親ポストに対するリプライ（ツリーの2件目）として投稿されます。
+・子ポストでは「どんな悩みが解決するか」「日々の生活がどう良くなるか」（ベネフィット）を短く具体的に描写してください。
+・子ポストの末尾には必ず「少しでも気になったらタップしてみて！」「今すぐチェック！」のような行動喚起（CTA）を入れてください。
 ・箇条書きではなく短い文で伝えてください。
-・URLの前に改行を入れ、タップしやすくしてください。
-・本文は全角${bodyCharTarget}文字以内に収めてください（URLはシステムが自動付与します）。
+・子ポストのURLの前に改行を入れ、タップしやすくしてください。
+・子ポストの本文は全角${bodyCharTarget}文字以内に収めてください（URLはシステムが自動付与します）。
 ・語尾は口語（〜だよ / 〜してみて）で統一してください。
 `
       : "";
@@ -712,53 +699,95 @@ function generateAffiliatePost(product, trendContext) {
 【文脈情報】
 ${trendContext}
 ${xAffHints}
+【ストーリーの一貫性の強制】
+指示：「親ポスト」と「子ポスト」は完全に連続した1つのストーリーとして構成すること。
+指示：親ポストで提示した「特定の悩みや課題」に対する直接的かつ論理的な解決策としてのみ、子ポストの商品（URL）を提示すること。
+
+【具体例】
+悪い例: (親) 資料作りを早く終わらせたい (子) 社会人スキルを鍛えよう！[URL]
+良い例: (親) 資料作りに毎日何時間も奪われている人へ。作業スピードが遅いのはツールのせいではなく「思考の型」を知らないからです。残業をゼロにするための決定的な本を見つけました。 (子) それが『コンサル一年目が学ぶこと』です。外資系コンサルの「最速で資料を仕上げる論理構成術」が全て詰まっています。今のうちに読んでおいてください→ [URL]
+
 【★文字数制限【厳守】★】
-・URLとタグを含めた最終的な投稿を、全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS}文字以内に収める必要があります。
-・システムが後からURL等（約${metaOverhead}文字分）を付与するため、本文メッセージは全角${bodyCharTarget}文字程度を目安に作成してください。
+・親ポストは全角80文字以内に収めてください（ハッシュタグ不要）。
+・子ポストはURLとタグを含めた最終的な投稿を、全角${POST_CONFIG.AFFILIATE_POST_MAX_CHARS}文字以内に収める必要があります。
+・システムが後から子ポストにURL等（約${metaOverhead}文字分）を付与するため、子ポストの本文メッセージは全角${bodyCharTarget}文字程度を目安に作成してください。
 
 【構成指示】
-・${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
+・親ポスト: 商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
+・子ポスト: ${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
 ・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
-・投稿本文のみをそのまま出力してください。
 ・一人称は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
 ・【超重要】商品名や文脈に外国語が含まれていても、出力する投稿本文（ハッシュタグを含む）は **必ず全て自然な日本語のみ** で構成してください。ロシア語や英語などの外国語は一切使用しないでください。
+
+【JSON形式での厳格な出力制限】
+テキストのパースエラーを防ぐため、必ず以下のJSONフォーマットのみで出力させ、余計な会話文を排除してください。
+{"parent": "親ポストのテキスト", "child": "子ポストのテキスト"}
 ${successfulPostsContext}
 `;
 
-  let bodyText = "";
+  let parsedPair = null;
   for (let r = 0; r < 3; r++) {
-    // 内部リトライも3回に増加
-    bodyText = cleanPostText(callGeminiAPI(prompt));
-    // 140文字制限(X)の場合は短めでも受理、Threadsの場合は従来どおり
-    const minLen =
-      POST_CONFIG.PLATFORM === "twitter"
-        ? 30
-        : POST_CONFIG.AFFILIATE_POST_MIN_CHARS - 30;
-    if (bodyText.length >= minLen) break;
+    try {
+      // 内部リトライも3回に増加
+      const responseText = callGeminiAPI(prompt);
+      // JSON部分を抽出
+      const jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        if (parsed.parent && parsed.child) {
+          // cleanPostTextでクリーニング
+          parsed.parent = cleanPostText(parsed.parent);
+          parsed.child = cleanPostText(parsed.child);
+
+          if (parsed.parent && parsed.child) {
+            parsedPair = parsed;
+            // 140文字制限(X)の場合は短めでも受理、Threadsの場合は従来どおり
+            const minLen =
+              POST_CONFIG.PLATFORM === "twitter"
+                ? 30
+                : POST_CONFIG.AFFILIATE_POST_MIN_CHARS - 30;
+            if (parsed.child.length >= minLen) {
+              break;
+            } else {
+              parsedPair = null; // 長すぎる/短すぎる場合は拒否して再試行
+            }
+          }
+        }
+      }
+    } catch (e) {
+      Logger.log(
+        `[PostGenerator] アフィリエイト投稿（JSON）生成エラー: ${e.message}`,
+      );
+    }
     Utilities.sleep(1000);
   }
 
+  if (!parsedPair) return null;
+
   // 最終的な組み立て
-  let finalText = bodyText;
-  if (finalText.indexOf(product.url) === -1) finalText += "\n" + product.url;
+  let childText = parsedPair.child;
+  if (childText.indexOf(product.url) === -1) childText += "\n" + product.url;
 
   // 最終文字数チェック
   const max = POST_CONFIG.AFFILIATE_POST_MAX_CHARS;
   // 実際に見える文字数（XのURL短縮を考慮）で判定
-  const visibleLen = finalText.length - product.url.length + urlCharCount;
+  const visibleLen = childText.length - product.url.length + urlCharCount;
 
   if (visibleLen > max) {
     Logger.log(
-      `[PostGenerator] アフィリエイト投稿が制限を超過(${visibleLen}/${max})。切り詰めます。`,
+      `[PostGenerator] アフィリエイト子投稿が制限を超過(${visibleLen}/${max})。切り詰めます。`,
     );
     const metaText = `\n${product.url}`;
     // 本文として許容できる長さを再計算
     const allowedBodyLen = max - metaOverhead - 3;
-    finalText = bodyText.substring(0, allowedBodyLen) + "..." + metaText;
+    childText =
+      parsedPair.child.substring(0, allowedBodyLen) + "..." + metaText;
   }
 
-  return finalText;
+  parsedPair.child = childText;
+
+  return parsedPair;
 }
 
 /**

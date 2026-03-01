@@ -165,7 +165,13 @@ function getNextPendingPost() {
     if (sched <= now && shouldPostNow()) {
       let parentId = "";
       const type = data[i][SHEET_COLUMNS.POST_TYPE - 1];
-      if (type === "affiliate_link" && i > 1) { // 直前のフック投稿のIDを取得
+      if (type === "affiliate_link" && i > 1) {
+        // 直前のフック投稿のIDを取得
+        // なぜ: 親（フック）が未投稿やエラーの場合、子だけ投稿すると文脈の壊れたスパムになるため防止する
+        const parentStatus = data[i - 1][SHEET_COLUMNS.STATUS - 1];
+        if (parentStatus !== "posted") {
+          throw new Error("親投稿が未完了のため中止");
+        }
         parentId = String(data[i - 1][SHEET_COLUMNS.TWEET_ID - 1] || "");
       }
 
