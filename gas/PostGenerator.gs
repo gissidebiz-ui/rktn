@@ -285,32 +285,52 @@ function searchRakutenProduct(keyword, trendData) {
 
   // 第1希望: keyword ＋ seasonKeyword の組み合わせ
   if (keyword && seasonKeyword) {
-    const searchKeyword = keyword + " " + seasonKeyword;
-    Logger.log(`[searchRakutenProduct] 第1希望で検索: "${searchKeyword}"`);
-    products = fetchRakutenItems(searchKeyword, 5);
+    try {
+      const searchKeyword = keyword + " " + seasonKeyword;
+      Logger.log(`[searchRakutenProduct] 第1希望で検索: "${searchKeyword}"`);
+      products = fetchRakutenItems(searchKeyword, 5);
+    } catch (e) {
+      Logger.log(`[searchRakutenProduct] 第1希望でエラー: ${e.message}`);
+      products = [];
+    }
   }
 
   // 第2希望: seasonKeyword 単独
   if (products.length === 0 && seasonKeyword) {
-    Logger.log(`[searchRakutenProduct] 第2希望で検索: "${seasonKeyword}"`);
-    products = fetchRakutenItems(seasonKeyword, 5);
+    try {
+      Logger.log(`[searchRakutenProduct] 第2希望で検索: "${seasonKeyword}"`);
+      products = fetchRakutenItems(seasonKeyword, 5);
+    } catch (e) {
+      Logger.log(`[searchRakutenProduct] 第2希望でエラー: ${e.message}`);
+      products = [];
+    }
   }
 
   // 第3希望: keyword 単独
   if (products.length === 0 && keyword) {
-    Logger.log(`[searchRakutenProduct] 第3希望で検索: "${keyword}"`);
-    products = fetchRakutenItems(keyword, 5);
+    try {
+      Logger.log(`[searchRakutenProduct] 第3希望で検索: "${keyword}"`);
+      products = fetchRakutenItems(keyword, 5);
+    } catch (e) {
+      Logger.log(`[searchRakutenProduct] 第3希望でエラー: ${e.message}`);
+      products = [];
+    }
   }
 
   // 第4希望: 最終フォールバック（apiType に応じた汎用キーワード）
   if (products.length === 0) {
-    let finalFallback = "人気 おすすめ";
-    if (apiType === "books") finalFallback = "ビジネス ランキング";
-    if (apiType === "travel") finalFallback = "人気 温泉";
-    Logger.log(
-      `[searchRakutenProduct] 第4希望（最終フォールバック）で検索: "${finalFallback}"`,
-    );
-    products = fetchRakutenItems(finalFallback, 10);
+    try {
+      let finalFallback = "人気 おすすめ";
+      if (apiType === "books") finalFallback = "ビジネス ランキング";
+      if (apiType === "travel") finalFallback = "人気 温泉";
+      Logger.log(
+        `[searchRakutenProduct] 第4希望（最終フォールバック）で検索: "${finalFallback}"`,
+      );
+      products = fetchRakutenItems(finalFallback, 10);
+    } catch (e) {
+      Logger.log(`[searchRakutenProduct] 第4希望でもエラー: ${e.message}`);
+      products = [];
+    }
   }
 
   return products.length > 0
@@ -549,6 +569,7 @@ function generateNormalPostsBatch(trendData, offset, count) {
     trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
     "生産性";
   const month = new Date().getMonth() + 1;
+  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日");
   const successfulPostsContext = buildSuccessfulPostsContext();
 
   const platformName =
@@ -578,7 +599,8 @@ function generateNormalPostsBatch(trendData, offset, count) {
 【重要制約】
 ・「テーマ：」や「生産性：」などのタイトル・見出しは一切不要です。冒頭から本文を開始してください。
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
-・現在は${month}月です。必ずこの時期に相応しい内容にしてください。
+・今日は${todayStr}です。現在の日付（上旬・中旬・下旬）のリアルなタイム感に完全に合致した内容にしてください。
+・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
 ・投稿本文のみを出力してください。
 ・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
 ・一人称（自分自身の呼び方）は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
@@ -662,6 +684,7 @@ ${successfulPostsContext}
  */
 function generateAffiliatePostPair(product, trendContext) {
   const month = new Date().getMonth() + 1;
+  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日");
   const successfulPostsContext = buildSuccessfulPostsContext();
   const platformName =
     POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
@@ -715,7 +738,9 @@ ${xAffHints}
 【構成指示】
 ・親ポスト: 商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
 ・子ポスト: ${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
-・現在は${month}月です。今の時期にこの商品が必要な理由を${month}月の季節感と絡めてください。
+・今日は${todayStr}です。現在の日付（上旬・中旬・下旬）のリアルなタイム感に完全に合致した内容にしてください。
+・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
+・今の時期にこの商品が必要な理由を${todayStr}の文脈と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
 ・一人称は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
 ・【超重要】商品名や文脈に外国語が含まれていても、出力する投稿本文（ハッシュタグを含む）は **必ず全て自然な日本語のみ** で構成してください。ロシア語や英語などの外国語は一切使用しないでください。

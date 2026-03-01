@@ -78,24 +78,56 @@ function getNextPostTime(lastPostTime) {
 }
 
 /**
- * 投稿セットに日付を割り当てる
- * @param {Object[]} postSet - 投稿オブジェクトの配列
- * @param {Date} startTime - 開始時間の基準（オプション）
+ * 投稿セットに日付を割り当てる（ピーク時間帯集中投下方式）
+ *
+ * 4セット（各4件）を以下の時間帯に1セットずつ配置する:
+ *   第1セット: 07:00〜08:30（朝の通勤）
+ *   第2セット: 11:30〜12:30（昼休み）
+ *   第3セット: 17:30〜18:30（帰宅）
+ *   第4セット: 20:30〜22:00（夜のゴールデン）
+ *
+ * セット内間隔:
+ *   通常/アフィフック → 直前から15〜30分後
+ *   アフィリンク（子）→ アフィフック（親）から1〜2分後
+ *
+ * @param {Object[]} postSet - 投稿オブジェクトの配列（最大16件 = 4セット×4件）
+ * @param {Date} startTime - 日付の基準（オプション、省略時は今日）
+ * @returns {Object[]} scheduledTime が付与された投稿配列
  */
 function generateSchedule(postSet, startTime = null) {
+  // ピーク時間帯の定義（時:分 を分換算で管理）
+  const PEAK_WINDOWS = [
+    { startMin: 7 * 60, endMin: 8 * 60 + 30 }, // 07:00〜08:30
+    { startMin: 11 * 60 + 30, endMin: 12 * 60 + 30 }, // 11:30〜12:30
+    { startMin: 17 * 60 + 30, endMin: 18 * 60 + 30 }, // 17:30〜18:30
+    { startMin: 20 * 60 + 30, endMin: 22 * 60 }, // 20:30〜22:00
+  ];
+
+  const POSTS_PER_SET = 4; // 通常2 + アフィフック1 + アフィリンク1
+  const INTRA_SET_INTERVAL_MIN = 15; // セット内の通常/フック間隔（分）最小
+  const INTRA_SET_INTERVAL_MAX = 30; // セット内の通常/フック間隔（分）最大
+  const AFFILIATE_LINK_DELAY_MIN = 1; // アフィリンク→フックからの遅延（分）最小
+  const AFFILIATE_LINK_DELAY_MAX = 2; // アフィリンク→フックからの遅延（分）最大
+
+  // 基準日を決定（時分秒をリセットして日付だけ使う）
+  const baseDate = startTime ? new Date(startTime.getTime()) : new Date();
+  baseDate.setHours(0, 0, 0, 0);
+
   const result = [];
-  let baseTime = startTime
-    ? new Date(startTime.getTime())
-    : getInitialStartTime();
+  let lastScheduledTime = null;
+  let currentPeakIndex = 0;
 
-  let lastScheduledTime = baseTime; // 実際の予定時刻を保存
+  for (let i = 0; i < postSet.length; i++) {
+    const post = postSet[i];
+    const posInSet = i % POSTS_PER_SET; // セット内での位置 (0,1,2,3)
 
-  postSet.forEach((post, index) => {
-    // アフィリエイトリンク（ツリーの2件目）の場合は直前の[実際の]時間から1〜2分ずらすだけ
+    // --- アフィリンク（子）: 直前のフック（親）から1〜2分後 ---
     if (post.type === "affiliate_link") {
-      const scheduledTime = new Date(
-        lastScheduledTime.getTime() + randomInt(1, 2) * 60 * 1000,
-      );
+      const delayMs =
+        randomInt(AFFILIATE_LINK_DELAY_MIN, AFFILIATE_LINK_DELAY_MAX) *
+        60 *
+        1000;
+      const scheduledTime = new Date(lastScheduledTime.getTime() + delayMs);
       result.push({
         ...post,
         scheduledTime: Utilities.formatDate(
@@ -104,25 +136,44 @@ function generateSchedule(postSet, startTime = null) {
           "yyyy/MM/dd HH:mm",
         ),
       });
-      return; // baseTimeは進めない
+      // lastScheduledTime はフック時刻のまま維持（リンクは付随投稿）
+      continue;
     }
 
-    // 夜間（24:00〜07:00）の場合は翌朝にスキップ
-    if (
-      baseTime.getHours() < SCHEDULE_CONFIG.QUIET_HOURS_END ||
-      baseTime.getHours() >= 24
-    ) {
-      baseTime.setHours(SCHEDULE_CONFIG.QUIET_HOURS_END, 0, 0, 0);
-      if (baseTime.getHours() >= 24) baseTime.setDate(baseTime.getDate() + 1);
+    // --- セットの先頭（posInSet === 0）: ピーク枠内のランダム時刻 ---
+    if (posInSet === 0) {
+      const peak =
+        PEAK_WINDOWS[
+          currentPeakIndex < PEAK_WINDOWS.length
+            ? currentPeakIndex
+            : PEAK_WINDOWS.length - 1
+        ];
+      const randomMinuteOfDay = randomInt(peak.startMin, peak.endMin);
+      const scheduledTime = new Date(baseDate.getTime());
+      scheduledTime.setHours(0, randomMinuteOfDay, 0, 0);
+
+      lastScheduledTime = scheduledTime;
+      result.push({
+        ...post,
+        scheduledTime: Utilities.formatDate(
+          scheduledTime,
+          "Asia/Tokyo",
+          "yyyy/MM/dd HH:mm",
+        ),
+      });
+
+      currentPeakIndex++;
+      Logger.log(
+        `[Scheduler] セット${currentPeakIndex} 開始: ${Utilities.formatDate(scheduledTime, "Asia/Tokyo", "HH:mm")}`,
+      );
+      continue;
     }
 
-    // 0〜5分のランダムな揺らぎ（Jitter）を加算
-    const jitterMs =
-      Math.floor(Math.random() * (SCHEDULE_CONFIG.JITTER_MAX_MIN + 1)) *
-      60 *
-      1000;
-    const scheduledTime = new Date(baseTime.getTime() + jitterMs);
-    lastScheduledTime = scheduledTime; // 次回用に実際の予定時刻を記録
+    // --- セット内の2件目以降（通常/アフィフック）: 前の投稿から15〜30分後 ---
+    const intervalMs =
+      randomInt(INTRA_SET_INTERVAL_MIN, INTRA_SET_INTERVAL_MAX) * 60 * 1000;
+    const scheduledTime = new Date(lastScheduledTime.getTime() + intervalMs);
+    lastScheduledTime = scheduledTime;
 
     result.push({
       ...post,
@@ -132,11 +183,11 @@ function generateSchedule(postSet, startTime = null) {
         "yyyy/MM/dd HH:mm",
       ),
     });
+  }
 
-    // 次回の投稿時間を 現在の予定時間から 60分後 として計算（間隔が1時間を切らないようにする）
-    baseTime = new Date(scheduledTime.getTime() + 60 * 60 * 1000);
-  });
-
+  Logger.log(
+    `[Scheduler] スケジュール生成完了: ${result.length}件 (${currentPeakIndex}セット)`,
+  );
   return result;
 }
 
