@@ -569,7 +569,7 @@ function generateNormalPostsBatch(trendData, offset, count) {
     trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
     "生産性";
   const month = new Date().getMonth() + 1;
-  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日");
+  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日(E)");
   const successfulPostsContext = buildSuccessfulPostsContext();
 
   const platformName =
@@ -599,7 +599,8 @@ function generateNormalPostsBatch(trendData, offset, count) {
 【重要制約】
 ・「テーマ：」や「生産性：」などのタイトル・見出しは一切不要です。冒頭から本文を開始してください。
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
-・今日は${todayStr}です。現在の日付（上旬・中旬・下旬）のリアルなタイム感に完全に合致した内容にしてください。
+・今日は${todayStr}です。指定された曜日（平日・休日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ、金曜の開放感など）に完全に合致した内容にしてください。
+・【厳禁】実際の曜日と矛盾する表現（例：日曜日なのに「今週も始まったね」「月曜の朝は」等）は絶対に出力しないでください。
 ・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
 ・投稿本文のみを出力してください。
 ・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
@@ -684,7 +685,7 @@ ${successfulPostsContext}
  */
 function generateAffiliatePostPair(product, trendContext) {
   const month = new Date().getMonth() + 1;
-  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日");
+  const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日(E)");
   const successfulPostsContext = buildSuccessfulPostsContext();
   const platformName =
     POST_CONFIG.PLATFORM === "twitter" ? "X（Twitter）" : "Threads";
@@ -738,7 +739,8 @@ ${xAffHints}
 【構成指示】
 ・親ポスト: 商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
 ・子ポスト: ${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
-・今日は${todayStr}です。現在の日付（上旬・中旬・下旬）のリアルなタイム感に完全に合致した内容にしてください。
+・今日は${todayStr}です。指定された曜日（平日・休日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ、金曜の開放感など）に完全に合致した内容にしてください。
+・【厳禁】実際の曜日と矛盾する表現（例：日曜日なのに「今週も始まったね」「月曜の朝は」等）は絶対に出力しないでください。
 ・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
 ・今の時期にこの商品が必要な理由を${todayStr}の文脈と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
