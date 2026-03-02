@@ -87,7 +87,7 @@ function getNextPostTime(lastPostTime) {
  *   第4セット: 20:30〜22:00（夜のゴールデン）
  *
  * セット内間隔:
- *   通常/アフィフック → 直前から15〜30分後
+ *   通常/アフィフック → 直前の投稿から15〜30分後
  *   アフィリンク（子）→ アフィフック（親）から1〜2分後
  *
  * @param {Object[]} postSet - 投稿オブジェクトの配列（最大16件 = 4セット×4件）
@@ -95,12 +95,12 @@ function getNextPostTime(lastPostTime) {
  * @returns {Object[]} scheduledTime が付与された投稿配列
  */
 function generateSchedule(postSet, startTime = null) {
-  // ピーク時間帯の定義（時:分 を分換算で管理）
+  // 4つのピーク時間帯の定義（開始・終了を分換算で保持）
   const PEAK_WINDOWS = [
-    { startMin: 7 * 60, endMin: 8 * 60 + 30 }, // 07:00〜08:30
-    { startMin: 11 * 60 + 30, endMin: 12 * 60 + 30 }, // 11:30〜12:30
-    { startMin: 17 * 60 + 30, endMin: 18 * 60 + 30 }, // 17:30〜18:30
-    { startMin: 20 * 60 + 30, endMin: 22 * 60 }, // 20:30〜22:00
+    { startMin: 7 * 60, endMin: 8 * 60 + 30 }, // 第1セット: 07:00〜08:30
+    { startMin: 11 * 60 + 30, endMin: 12 * 60 + 30 }, // 第2セット: 11:30〜12:30
+    { startMin: 17 * 60 + 30, endMin: 18 * 60 + 30 }, // 第3セット: 17:30〜18:30
+    { startMin: 20 * 60 + 30, endMin: 22 * 60 }, // 第4セット: 20:30〜22:00
   ];
 
   const POSTS_PER_SET = 4; // 通常2 + アフィフック1 + アフィリンク1
@@ -121,34 +121,15 @@ function generateSchedule(postSet, startTime = null) {
     const post = postSet[i];
     const posInSet = i % POSTS_PER_SET; // セット内での位置 (0,1,2,3)
 
-    // --- アフィリンク（子）: 直前のフック（親）から1〜2分後 ---
-    if (post.type === "affiliate_link") {
-      const delayMs =
-        randomInt(AFFILIATE_LINK_DELAY_MIN, AFFILIATE_LINK_DELAY_MAX) *
-        60 *
-        1000;
-      const scheduledTime = new Date(lastScheduledTime.getTime() + delayMs);
-      result.push({
-        ...post,
-        scheduledTime: Utilities.formatDate(
-          scheduledTime,
-          "Asia/Tokyo",
-          "yyyy/MM/dd HH:mm",
-        ),
-      });
-      // lastScheduledTime はフック時刻のまま維持（リンクは付随投稿）
-      continue;
-    }
-
-    // --- セットの先頭（posInSet === 0）: ピーク枠内のランダム時刻 ---
+    // --- 1セット目の先頭（posInSet === 0）: 指定された時間枠内のランダム時刻 ---
     if (posInSet === 0) {
-      const peak =
-        PEAK_WINDOWS[
-          currentPeakIndex < PEAK_WINDOWS.length
-            ? currentPeakIndex
-            : PEAK_WINDOWS.length - 1
-        ];
+      const peakIndex = Math.min(
+        Math.floor(i / POSTS_PER_SET),
+        PEAK_WINDOWS.length - 1,
+      );
+      const peak = PEAK_WINDOWS[peakIndex];
       const randomMinuteOfDay = randomInt(peak.startMin, peak.endMin);
+
       const scheduledTime = new Date(baseDate.getTime());
       scheduledTime.setHours(0, randomMinuteOfDay, 0, 0);
 
@@ -162,17 +143,43 @@ function generateSchedule(postSet, startTime = null) {
         ),
       });
 
-      currentPeakIndex++;
+      currentPeakIndex = peakIndex + 1;
       Logger.log(
-        `[Scheduler] セット${currentPeakIndex} 開始: ${Utilities.formatDate(scheduledTime, "Asia/Tokyo", "HH:mm")}`,
+        `[Scheduler] 第${currentPeakIndex}セット 開始: ${Utilities.formatDate(scheduledTime, "Asia/Tokyo", "HH:mm")}`,
       );
       continue;
     }
 
-    // --- セット内の2件目以降（通常/アフィフック）: 前の投稿から15〜30分後 ---
-    const intervalMs =
-      randomInt(INTRA_SET_INTERVAL_MIN, INTRA_SET_INTERVAL_MAX) * 60 * 1000;
-    const scheduledTime = new Date(lastScheduledTime.getTime() + intervalMs);
+    // --- アフィリンク（子）投稿: 直前のフック（親）から1〜2分後 ---
+    if (post.type === "affiliate_link") {
+      const delayMin = randomInt(
+        AFFILIATE_LINK_DELAY_MIN,
+        AFFILIATE_LINK_DELAY_MAX,
+      );
+      const scheduledTime = new Date(
+        lastScheduledTime.getTime() + delayMin * 60 * 1000,
+      );
+      result.push({
+        ...post,
+        scheduledTime: Utilities.formatDate(
+          scheduledTime,
+          "Asia/Tokyo",
+          "yyyy/MM/dd HH:mm",
+        ),
+      });
+      // アフィリンクの時刻は次の投稿(もしあれば)の基準としないため、
+      // lastScheduledTimeは更新せずフック（親）の時刻を維持します
+      continue;
+    }
+
+    // --- 同一セット内の「次の通常投稿」や「アフィフック投稿」: 前の投稿から15〜30分後 ---
+    const intervalMin = randomInt(
+      INTRA_SET_INTERVAL_MIN,
+      INTRA_SET_INTERVAL_MAX,
+    );
+    const scheduledTime = new Date(
+      lastScheduledTime.getTime() + intervalMin * 60 * 1000,
+    );
     lastScheduledTime = scheduledTime;
 
     result.push({
