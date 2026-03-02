@@ -309,15 +309,37 @@ function getRakutenProductByUrl(rakutenApiUrl) {
 function searchRakutenProduct(keyword, trendData) {
   const apiType = CONFIG.RAKUTEN_API_TYPE;
 
-  // seasonalTopics からランダムに1つ選び、季節キーワードとする
+  // seasonalSearchKeywords からランダムに1つ選び、季節キーワードとする（フォールバックで seasonalTopics）
   const seasonalTopics =
-    trendData && trendData.seasonalTopics && trendData.seasonalTopics.length > 0
-      ? trendData.seasonalTopics
-      : [];
-  const seasonKeyword =
+    trendData &&
+    trendData.seasonalSearchKeywords &&
+    trendData.seasonalSearchKeywords.length > 0
+      ? trendData.seasonalSearchKeywords
+      : trendData &&
+          trendData.seasonalTopics &&
+          trendData.seasonalTopics.length > 0
+        ? trendData.seasonalTopics
+        : [];
+  let seasonKeyword =
     seasonalTopics.length > 0
       ? seasonalTopics[Math.floor(Math.random() * seasonalTopics.length)]
       : "";
+
+  // 季節キーワードの強制サニタイズ（AIが文章を出力するエラー対策）
+  if (seasonKeyword) {
+    if (
+      seasonKeyword.length >= 15 ||
+      seasonKeyword.indexOf("の") !== -1 ||
+      seasonKeyword.indexOf("に") !== -1 ||
+      seasonKeyword.indexOf("おすすめ") !== -1 ||
+      seasonKeyword.indexOf("対策") !== -1
+    ) {
+      Logger.log(
+        `[searchRakutenProduct] 季節キーワードが無効な形式のためリセットします: "${seasonKeyword}"`,
+      );
+      seasonKeyword = "";
+    }
+  }
 
   Logger.log(
     `[searchRakutenProduct] 季節キーワード: "${seasonKeyword}" (候補数: ${seasonalTopics.length})`,

@@ -113,12 +113,13 @@ function analyzeTrends(forceRefresh = false) {
 
 ■ 依頼事項:
 Threads上でこのペルソナに今刺さる「キーワード」と「テーマ」を抽出してください。
-また、${month}月という季節に完全に合致した、ECサイトでの商品検索にそのまま使える「短い検索単語（例：花粉症 対策、新生活 家電、お花見 グッズ 等）」を3つ挙げてください。APIエラーを防ぐため、1つの要素は【最大2単語、合計15文字以内】とし、文章（〜な話題、〜のステイ等）は絶対に出力しないでください。
+また、${month}月に合致する、ECサイト検索用の純粋な検索クエリ（名詞の組み合わせ）を3つ挙げてください。
+【絶対厳守】要素は必ず「乾燥 温泉」「新生活 家電」のような【名詞とスペースのみ】で構成してください。「〜におすすめ」「〜の対策」といった助詞（の、に、おすすめ等）や文章は、システムエラーの原因となるため一切使用しないでください。
 
 【厳禁】${month}月と無関係な季節外れの話題（例: 2月に年末年始の話題など）は絶対に出さないでください。
 
 ■ 出力フォーマット（JSONのみ）:
-{"keywords":["キーワード1","キーワード2",...],"themes":["テーマ1","テーマ2",...],"toneStyle":"推奨される語り口・トーン","seasonalTopics":["季節ネタ1","季節ネタ2",...]}
+{"keywords":["キーワード1","キーワード2",...],"themes":["テーマ1","テーマ2",...],"toneStyle":"推奨される語り口・トーン","seasonalSearchKeywords":["名詞 名詞","名詞 名詞"]}
 `;
 
   const rawText = callGeminiAPI(prompt);
@@ -134,7 +135,7 @@ Threads上でこのペルソナに今刺さる「キーワード」と「テー�
       keywords: ["時短術", "コスパ", "生産性向上"],
       themes: ["仕事効率化", "自己研鑽"],
       toneStyle: "共感を得やすい、柔らかくも理知的なトーン",
-      seasonalTopics: [`${month}月の過ごし方`, "新生活の準備"],
+      seasonalSearchKeywords: ["新生活 家電", "春 温泉"],
     };
   }
 
@@ -150,6 +151,6 @@ function buildTrendContext(trendData) {
   return `【最新トレンド・季節文脈】
 ・話題キーワード: ${trendData.keywords.join("、")}
 ・人気テーマ: ${trendData.themes.join("、")}
-・季節の話題: ${trendData.seasonalTopics.join("、")}
+・季節の話題: ${(trendData.seasonalSearchKeywords || trendData.seasonalTopics || []).join("、")}
 ・推奨スタイル: ${trendData.toneStyle}`.trim();
 }
