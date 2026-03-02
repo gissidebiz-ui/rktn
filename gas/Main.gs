@@ -152,6 +152,7 @@ function setupTriggers() {
     "generateAndSchedule",
     "processScheduledPosts",
     "refreshRecentPostInsights",
+    "refreshThreadsToken",
   ];
 
   targetFunctions.forEach(function (funcName) {
@@ -211,6 +212,20 @@ function setupTriggers() {
     Logger.log(
       "✅ 日次トリガー「refreshRecentPostInsights」を登録しました（毎日2時）",
     );
+  }
+
+  // 4. 月次トリガー: refreshThreadsToken（毎月1日の午前3時）
+  if (existingFunctions.indexOf("refreshThreadsToken") === -1) {
+    ScriptApp.newTrigger("refreshThreadsToken")
+      .timeBased()
+      .onMonthDay(1)
+      .atHour(3)
+      .create();
+    Logger.log(
+      "✅ 月次トリガー「refreshThreadsToken」を登録しました（毎月1日の3時）",
+    );
+  } else {
+    Logger.log("ℹ️ 月次トリガー「refreshThreadsToken」は既に登録済みです");
   }
 }
 

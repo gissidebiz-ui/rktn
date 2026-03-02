@@ -149,3 +149,48 @@ function getMediaInsights(mediaId) {
 
   return result;
 }
+
+/**
+ * Threads APIの長期アクセストークンをリフレッシュする
+ * 有効期限(60日)を延長するため、定期的に実行する
+ */
+function refreshThreadsToken() {
+  Logger.log("[ThreadsAPI] トークンのリフレッシュ処理を開始します");
+  try {
+    const currentToken = CONFIG.THREADS_ACCESS_TOKEN;
+    if (!currentToken) {
+      throw new Error("現在の THREADS_ACCESS_TOKEN が見つかりません。");
+    }
+
+    const url = `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${currentToken}`;
+
+    const response = UrlFetchApp.fetch(url, {
+      method: "get",
+      muteHttpExceptions: true,
+    });
+
+    const res = JSON.parse(response.getContentText());
+
+    if (res.error) {
+      throw new Error(res.error.message || "不明なエラー");
+    }
+
+    if (res.access_token) {
+      PropertiesService.getScriptProperties().setProperty(
+        "THREADS_ACCESS_TOKEN",
+        res.access_token,
+      );
+      Logger.log(
+        "[ThreadsAPI] ✅ トークンのリフレッシュに成功し、スクリプトプロパティを更新しました。",
+      );
+    } else {
+      throw new Error(
+        `レスポンスに access_token が含まれていません: ${JSON.stringify(res)}`,
+      );
+    }
+  } catch (e) {
+    Logger.log(
+      `[ThreadsAPI] ❌ トークンのリフレッシュに失敗しました: ${e.message}`,
+    );
+  }
+}
