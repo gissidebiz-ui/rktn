@@ -8,6 +8,44 @@
  */
 
 /**
+ * 取得した商品リストからNG商材（Meta規約違反等）を除外する
+ * @param {Object[]} products - 商品情報の配列
+ * @returns {Object[]} 安全な商品の配列
+ */
+function filterSafeProducts(products) {
+  const NG_WORDS = [
+    "サプリ",
+    "医薬品",
+    "ダイエット",
+    "精力",
+    "アダルト",
+    "タバコ",
+    "CBD",
+    "電子タバコ",
+    "カジノ",
+    "ギャンブル",
+    "情報商材",
+  ];
+  const before = products.length;
+  const filtered = products.filter(function (item) {
+    const target = (
+      (item.name || "") +
+      " " +
+      (item.caption || "")
+    ).toLowerCase();
+    return !NG_WORDS.some(function (word) {
+      return target.indexOf(word.toLowerCase()) !== -1;
+    });
+  });
+  if (filtered.length < before) {
+    Logger.log(
+      `[filterSafeProducts] NG商材除外: ${before}件→${filtered.length}件 (${before - filtered.length}件除外)`,
+    );
+  }
+  return filtered;
+}
+
+/**
  * 楽天 API から商品情報を取得する
  * @param {string} keyword - 検索キーワード
  * @param {number} hits - 取得件数（デフォルト: 3）
@@ -93,7 +131,7 @@ function fetchRakutenItems(keyword, hits) {
       return [];
     }
 
-    return items.map(function (item) {
+    const mappedItems = items.map(function (item) {
       // 楽天トラベルの構造（nested hotelBasicInfo）にも対応
       let i = item.Item || item;
       if (item.hotel && Array.isArray(item.hotel)) {
@@ -118,6 +156,8 @@ function fetchRakutenItems(keyword, hits) {
             : i.hotelImageUrl || i.largeImageUrl || i.mediumImageUrl || "",
       };
     });
+
+    return filterSafeProducts(mappedItems);
   } catch (e) {
     Logger.log("[Rakuten] API エラー詳細: " + e.message);
     throw e;
@@ -229,7 +269,7 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
     // 楽天 Books 系 API と Ichiba API で構造が異なるため両方に対応
     const items = data.Items || data.items || [];
 
-    return items.map(function (item) {
+    const mappedItems = items.map(function (item) {
       const i = item.Item || item;
       return {
         name: i.itemName || i.title || i.hotelName || "",
@@ -242,6 +282,8 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
         imageUrl: "",
       };
     });
+
+    return filterSafeProducts(mappedItems);
   } catch (e) {
     Logger.log("[Rakuten] URL API エラー詳細: " + e.message);
     throw e;
@@ -267,59 +309,6 @@ function getRakutenProductByUrl(rakutenApiUrl) {
 function searchRakutenProduct(keyword, trendData) {
   const apiType = CONFIG.RAKUTEN_API_TYPE;
 
-  // Meta社規約で宣伝禁止・制限されている商品カテゴリのNGワード（取得後フィルタリング用）
-  // なぜ検索時ではなく取得後か: 楽天APIが「-keyword」除外構文を正しくサポートしていないため
-  const BLOCKED_WORDS = [
-    "サプリ",
-    "サプリメント",
-    "医薬品",
-    "医薬部外品",
-    "ダイエット",
-    "痩せ",
-    "減量",
-    "脂肪燃焼",
-    "精力",
-    "精力剤",
-    "ED",
-    "勃起",
-    "アダルト",
-    "18禁",
-    "R18",
-    "官能",
-    "タバコ",
-    "電子タバコ",
-    "VAPE",
-    "加熱式タバコ",
-    "CBD",
-    "大麻",
-    "ヘンプ",
-  ];
-
-  /**
-   * 取得した商品リストからMeta規約に抵触する商品を除外する
-   * @param {Object[]} items - fetchRakutenItems の戻り値
-   * @returns {Object[]} フィルタリング済みの商品リスト
-   */
-  function filterBlockedProducts(items) {
-    const before = items.length;
-    const filtered = items.filter(function (item) {
-      const target = (
-        (item.name || "") +
-        " " +
-        (item.caption || "")
-      ).toLowerCase();
-      return !BLOCKED_WORDS.some(function (word) {
-        return target.indexOf(word.toLowerCase()) !== -1;
-      });
-    });
-    if (filtered.length < before) {
-      Logger.log(
-        `[searchRakutenProduct] Meta規約フィルタ: ${before}件→${filtered.length}件 (${before - filtered.length}件除外)`,
-      );
-    }
-    return filtered;
-  }
-
   // seasonalTopics からランダムに1つ選び、季節キーワードとする
   const seasonalTopics =
     trendData && trendData.seasonalTopics && trendData.seasonalTopics.length > 0
@@ -336,12 +325,24 @@ function searchRakutenProduct(keyword, trendData) {
 
   let products = [];
 
+  // APIタイプ別クエリ最適化
+  if (apiType === "travel") {
+    const travelKeywords = ["温泉", "ホテル", "観光"];
+    keyword =
+      travelKeywords[Math.floor(Math.random() * travelKeywords.length)] +
+      (Math.random() > 0.5 ? "" : ""); // 温泉 ホテル 観光のいずれか
+  } else if (apiType === "books") {
+    keyword = "本 雑誌";
+  }
+
   // 第1希望: keyword ＋ seasonKeyword の組み合わせ
   if (keyword && seasonKeyword) {
     try {
-      const searchKeyword = keyword + " " + seasonKeyword;
+      let searchKeyword = keyword + " " + seasonKeyword;
+      if (searchKeyword.length > 35)
+        searchKeyword = searchKeyword.substring(0, 35);
       Logger.log(`[searchRakutenProduct] 第1希望で検索: "${searchKeyword}"`);
-      products = filterBlockedProducts(fetchRakutenItems(searchKeyword, 5));
+      products = fetchRakutenItems(searchKeyword, 5);
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第1希望でエラー: ${e.message}`);
       products = [];
@@ -351,8 +352,11 @@ function searchRakutenProduct(keyword, trendData) {
   // 第2希望: seasonKeyword 単独
   if (products.length === 0 && seasonKeyword) {
     try {
-      Logger.log(`[searchRakutenProduct] 第2希望で検索: "${seasonKeyword}"`);
-      products = filterBlockedProducts(fetchRakutenItems(seasonKeyword, 5));
+      let searchKeyword = seasonKeyword;
+      if (searchKeyword.length > 35)
+        searchKeyword = searchKeyword.substring(0, 35);
+      Logger.log(`[searchRakutenProduct] 第2希望で検索: "${searchKeyword}"`);
+      products = fetchRakutenItems(searchKeyword, 5);
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第2希望でエラー: ${e.message}`);
       products = [];
@@ -362,8 +366,11 @@ function searchRakutenProduct(keyword, trendData) {
   // 第3希望: keyword 単独
   if (products.length === 0 && keyword) {
     try {
-      Logger.log(`[searchRakutenProduct] 第3希望で検索: "${keyword}"`);
-      products = filterBlockedProducts(fetchRakutenItems(keyword, 5));
+      let searchKeyword = keyword;
+      if (searchKeyword.length > 35)
+        searchKeyword = searchKeyword.substring(0, 35);
+      Logger.log(`[searchRakutenProduct] 第3希望で検索: "${searchKeyword}"`);
+      products = fetchRakutenItems(searchKeyword, 5);
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第3希望でエラー: ${e.message}`);
       products = [];
@@ -376,10 +383,13 @@ function searchRakutenProduct(keyword, trendData) {
       let finalFallback = "人気 おすすめ";
       if (apiType === "books") finalFallback = "ビジネス ランキング";
       if (apiType === "travel") finalFallback = "人気 温泉";
+      let searchKeyword = finalFallback;
+      if (searchKeyword.length > 35)
+        searchKeyword = searchKeyword.substring(0, 35);
       Logger.log(
-        `[searchRakutenProduct] 第4希望（最終フォールバック）で検索: "${finalFallback}"`,
+        `[searchRakutenProduct] 第4希望（最終フォールバック）で検索: "${searchKeyword}"`,
       );
-      products = filterBlockedProducts(fetchRakutenItems(finalFallback, 10));
+      products = fetchRakutenItems(searchKeyword, 10);
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第4希望でもエラー: ${e.message}`);
       products = [];
@@ -621,7 +631,6 @@ function generateNormalPostsBatch(trendData, offset, count) {
   const focusKeyword =
     trendData.keywords[Math.floor(Math.random() * trendData.keywords.length)] ||
     "生産性";
-  const month = new Date().getMonth() + 1;
   const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日(E)");
   const successfulPostsContext = buildSuccessfulPostsContext();
 
@@ -652,13 +661,17 @@ function generateNormalPostsBatch(trendData, offset, count) {
 【重要制約】
 ・「テーマ：」や「生産性：」などのタイトル・見出しは一切不要です。冒頭から本文を開始してください。
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
-・今日は${todayStr}です。指定された曜日（平日・休日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ、金曜の開放感など）に完全に合致した内容にしてください。
-・【厳禁】実際の曜日と矛盾する表現（例：日曜日なのに「今週も始まったね」「月曜の朝は」等）は絶対に出力しないでください。
-・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
+・今日は${todayStr}です。指定された曜日（平日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ等）に完全に合致した内容にしてください。
+・【厳禁】実際の曜日や日付と矛盾する表現（例：日曜日なのに「今週も始まったね」、月初なのに「月末」等）は絶対に出力しないでください。
 ・投稿本文のみを出力してください。
 ・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
 ・一人称（自分自身の呼び方）は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
 ・【偽情報・スパム回避】科学的根拠のない断定（「これをやれば絶対に治る」「必ず成功する」等）や、過度な不安を煽る表現はMeta社の規約違反となるため厳禁です。
+・【プラットフォーム検閲回避のための最重要ルール】
+Meta社のスパム・詐欺検知アルゴリズムを回避するため、以下の表現やテーマは絶対に使用しないでください。
+  - NGワード：「オンラインサロン」「情報商材」「副業」「不労所得」「人生逆転」「稼ぐ」「儲かる」「投資で増やす」
+  - NGテーマ：「高額なオンライン講座の受講を匂わせる表現」「経済的自由を煽る自己啓発的な表現」
+・【偽装行為の絶対禁止】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー（買ってみた等）」を絶対に捏造しないでください。あくまで客観的なキュレーターとして紹介してください。
 ${xStructureHints}
 【★文字数制限【厳守】★】
 ・各投稿はそれぞれ必ず全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内に収めてください。
@@ -738,7 +751,6 @@ ${successfulPostsContext}
  * アフィリエイト投稿（親・子のセット）を生成
  */
 function generateAffiliatePostPair(product, trendContext) {
-  const month = new Date().getMonth() + 1;
   const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日(E)");
   const successfulPostsContext = buildSuccessfulPostsContext();
   const platformName =
@@ -793,14 +805,17 @@ ${xAffHints}
 【構成指示】
 ・親ポスト: 商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
 ・子ポスト: ${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
-・【偽装行為の絶対禁止（Meta規約準拠）】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー」「買ってみた・使っている等の嘘」を絶対に捏造しないでください。あくまで客観的なキュレーターとしての紹介（例：「〇〇という悩みに効くらしい」「〇〇で評判のアイテム」等）に徹底してください。
-・今日は${todayStr}です。指定された曜日（平日・休日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ、金曜の開放感など）に完全に合致した内容にしてください。
-・【厳禁】実際の曜日と矛盾する表現（例：日曜日なのに「今週も始まったね」「月曜の朝は」等）は絶対に出力しないでください。
-・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
+・今日は${todayStr}です。指定された曜日（平日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ等）に完全に合致した内容にしてください。
+・【厳禁】実際の曜日や日付と矛盾する表現（例：日曜日なのに「今週も始まったね」、月初なのに「月末」等）は絶対に出力しないでください。
 ・今の時期にこの商品が必要な理由を${todayStr}の文脈と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
 ・一人称は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
 ・【超重要】商品名や文脈に外国語が含まれていても、出力する投稿本文（ハッシュタグを含む）は **必ず全て自然な日本語のみ** で構成してください。ロシア語や英語などの外国語は一切使用しないでください。
+・【プラットフォーム検閲回避のための最重要ルール】
+Meta社のスパム・詐欺検知アルゴリズムを回避するため、以下の表現やテーマは絶対に使用しないでください。
+  - NGワード：「オンラインサロン」「情報商材」「副業」「不労所得」「人生逆転」「稼ぐ」「儲かる」「投資で増やす」
+  - NGテーマ：「高額なオンライン講座の受講を匂わせる表現」「経済的自由を煽る自己啓発的な表現」
+・【偽装行為の絶対禁止】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー（買ってみた等）」を絶対に捏造しないでください。あくまで客観的なキュレーターとして紹介してください。
 
 【JSON形式での厳格な出力制限】
 テキストのパースエラーを防ぐため、必ず以下のJSONフォーマットのみで出力させ、余計な会話文を排除してください。
