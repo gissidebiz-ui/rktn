@@ -341,6 +341,36 @@ function searchRakutenProduct(keyword, trendData) {
     }
   }
 
+  const personaThemes = {
+    travel: [
+      "サウナ 宿",
+      "ワーケーション ホテル",
+      "露天風呂付客室",
+      "おひとりさま 温泉",
+      "オールインクルーシブ 宿",
+      "リトリート 宿",
+    ],
+    books: [
+      "タイムマネジメント 本",
+      "習慣化 書籍",
+      "マネジメント 本",
+      "論理的思考 本",
+      "睡眠改善 本",
+      "資産運用 本",
+    ],
+    ichiba: [
+      "時短家電",
+      "デスク周り 便利",
+      "睡眠グッズ",
+      "アイマッサージャー",
+      "完全栄養食",
+      "スマート家電",
+    ],
+  };
+  const fallbackList = personaThemes[apiType] || personaThemes.ichiba;
+  const randomTheme =
+    fallbackList[Math.floor(Math.random() * fallbackList.length)];
+
   Logger.log(
     `[searchRakutenProduct] 季節キーワード: "${seasonKeyword}" (候補数: ${seasonalTopics.length})`,
   );
@@ -349,12 +379,22 @@ function searchRakutenProduct(keyword, trendData) {
 
   // APIタイプ別クエリ最適化
   if (apiType === "travel") {
-    const travelKeywords = ["温泉", "ホテル", "観光"];
-    keyword =
-      travelKeywords[Math.floor(Math.random() * travelKeywords.length)] +
-      (Math.random() > 0.5 ? "" : ""); // 温泉 ホテル 観光のいずれか
+    keyword = "";
+    if (seasonKeyword) {
+      seasonKeyword = seasonKeyword + " 宿";
+    } else {
+      keyword = randomTheme;
+    }
   } else if (apiType === "books") {
-    keyword = "本 雑誌";
+    if (keyword) {
+      keyword = keyword + " 本";
+    } else {
+      keyword = randomTheme;
+    }
+  } else {
+    if (!keyword) {
+      keyword = randomTheme;
+    }
   }
 
   // 第1希望: keyword ＋ seasonKeyword の組み合わせ
@@ -402,9 +442,8 @@ function searchRakutenProduct(keyword, trendData) {
   // 第4希望: 最終フォールバック（apiType に応じた汎用キーワード）
   if (products.length === 0) {
     try {
-      let finalFallback = "人気 おすすめ";
-      if (apiType === "books") finalFallback = "ビジネス ランキング";
-      if (apiType === "travel") finalFallback = "人気 温泉";
+      let finalFallback =
+        fallbackList[Math.floor(Math.random() * fallbackList.length)];
       let searchKeyword = finalFallback;
       if (searchKeyword.length > 35)
         searchKeyword = searchKeyword.substring(0, 35);
