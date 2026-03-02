@@ -511,7 +511,7 @@ function buildSuccessfulPostsContext() {
 /**
  * 1セット（4件）の投稿を生成する
  */
-function generatePostSet(keywordOrUrl, offset = 0) {
+function generatePostSet(keywordOrUrl, offset = 0, timeContext = "") {
   const trendData = analyzeTrends();
   const trendContext = buildTrendContext(trendData);
   const posts = [];
@@ -524,6 +524,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
     trendData,
     offset,
     POST_CONFIG.NORMAL_POSTS_PER_SET,
+    timeContext,
   );
 
   for (let i = 0; i < POST_CONFIG.NORMAL_POSTS_PER_SET; i++) {
@@ -572,7 +573,11 @@ function generatePostSet(keywordOrUrl, offset = 0) {
     while (!affPostPair && retries < 5) {
       // リトライ回数を5回に増加
       try {
-        affPostPair = generateAffiliatePostPair(product, trendContext);
+        affPostPair = generateAffiliatePostPair(
+          product,
+          trendContext,
+          timeContext,
+        );
       } catch (genErr) {
         Logger.log(
           `[PostGenerator] アフィリエイト生成エラー: ${genErr.message}`,
@@ -620,7 +625,12 @@ function generatePostSet(keywordOrUrl, offset = 0) {
       while (fallbackTexts.length < 2 && retries < 3) {
         try {
           // フォールバック用に2件(フック+アフィ枠分)生成
-          fallbackTexts = generateNormalPostsBatch(trendData, offset + 3, 2);
+          fallbackTexts = generateNormalPostsBatch(
+            trendData,
+            offset + 3,
+            2,
+            timeContext,
+          );
         } catch (fbErr) {
           Logger.log(
             `[PostGenerator] フォールバック生成エラー: ${fbErr.message}`,
@@ -669,7 +679,7 @@ function generatePostSet(keywordOrUrl, offset = 0) {
  * 通常投稿を複数件まとめてバッチ生成する
  * 1回のリクエストで複数件分のテキストを配列で返す
  */
-function generateNormalPostsBatch(trendData, offset, count) {
+function generateNormalPostsBatch(trendData, offset, count, timeContext = "") {
   const defaultStyles = [
     "共感・あるある（読者が「わかる」と頷く内容）",
     "有益な知恵袋（意外と知らないライフハック）",
@@ -724,6 +734,8 @@ function generateNormalPostsBatch(trendData, offset, count) {
 ・「はい」「承知しました」などの会話文や前置きは厳禁です。
 ・今日は${todayStr}です。指定された曜日（平日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ等）に完全に合致した内容にしてください。
 ・【厳禁】実際の曜日や日付と矛盾する表現（例：日曜日なのに「今週も始まったね」、月初なのに「月末」等）は絶対に出力しないでください。
+・【最重要タイムコンテキスト】この投稿はターゲットの【 ${timeContext} 】の時間帯にタイムラインに流れます。その時間帯特有のターゲットの心理状態やシチュエーション（例：朝の憂鬱、夕方の疲労など）に完全に寄り添った内容にしてください。
+・【厳禁】指定された時間帯と矛盾する挨拶や表現（夕方・夜の配信枠なのに「おはよう」「今週もスタート」等）は絶対に生成しないでください。
 ・投稿本文のみを出力してください。
 ・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
 ・一人称（自分自身の呼び方）は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
@@ -811,7 +823,7 @@ ${successfulPostsContext}
 /**
  * アフィリエイト投稿（親・子のセット）を生成
  */
-function generateAffiliatePostPair(product, trendContext) {
+function generateAffiliatePostPair(product, trendContext, timeContext = "") {
   const todayStr = Utilities.formatDate(new Date(), "Asia/Tokyo", "M月d日(E)");
   const successfulPostsContext = buildSuccessfulPostsContext();
   const platformName =
@@ -868,6 +880,8 @@ ${xAffHints}
 ・子ポスト: ${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
 ・今日は${todayStr}です。指定された曜日（平日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ等）に完全に合致した内容にしてください。
 ・【厳禁】実際の曜日や日付と矛盾する表現（例：日曜日なのに「今週も始まったね」、月初なのに「月末」等）は絶対に出力しないでください。
+・【最重要タイムコンテキスト】この投稿はターゲットの【 ${timeContext} 】の時間帯にタイムラインに流れます。その時間帯特有のターゲットの心理状態やシチュエーション（例：朝の憂鬱、夕方の疲労など）に完全に寄り添った内容にしてください。
+・【厳禁】指定された時間帯と矛盾する挨拶や表現（夕方・夜の配信枠なのに「おはよう」「今週もスタート」等）は絶対に生成しないでください。
 ・今の時期にこの商品が必要な理由を${todayStr}の文脈と絡めてください。
 ・「PRであること」を隠さず、かつ自然なトーンでURLへの誘導を行ってください。
 ・一人称は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。

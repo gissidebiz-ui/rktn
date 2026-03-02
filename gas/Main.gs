@@ -265,9 +265,17 @@ function generateAndSchedule(rakutenUrl) {
   const allPostObjects = [];
   const trendData = analyzeTrends(true);
 
+  const timeContexts = [
+    "朝の通勤・始業前（07:00〜08:30）",
+    "昼休み（11:30〜12:30）",
+    "夕方の帰宅・疲労のピーク（17:30〜18:30）",
+    "夜のリラックスタイム（20:30〜22:00）",
+  ];
+
   try {
     for (let i = 0; i < 4; i++) {
       Logger.log(`--- セット ${i + 1} / 4 生成中 ---`);
+      const currentTimeContext = timeContexts[i];
 
       // Step 1: 楽天 URL の決定
       let currentRakutenUrl = rakutenUrl;
@@ -281,7 +289,11 @@ function generateAndSchedule(rakutenUrl) {
 
       // Step 2: 4件セット生成
       const offset = i * 4; // 1日全体の通し番号としてオフセットを計算
-      const postSet = generatePostSet(currentRakutenUrl, offset);
+      const postSet = generatePostSet(
+        currentRakutenUrl,
+        offset,
+        currentTimeContext,
+      );
 
       if (postSet.length > 0) {
         // スケジュール前の生投稿オブジェクトを溜める
