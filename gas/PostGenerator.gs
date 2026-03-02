@@ -267,6 +267,59 @@ function getRakutenProductByUrl(rakutenApiUrl) {
 function searchRakutenProduct(keyword, trendData) {
   const apiType = CONFIG.RAKUTEN_API_TYPE;
 
+  // Meta社規約で宣伝禁止・制限されている商品カテゴリのNGワード（取得後フィルタリング用）
+  // なぜ検索時ではなく取得後か: 楽天APIが「-keyword」除外構文を正しくサポートしていないため
+  const BLOCKED_WORDS = [
+    "サプリ",
+    "サプリメント",
+    "医薬品",
+    "医薬部外品",
+    "ダイエット",
+    "痩せ",
+    "減量",
+    "脂肪燃焼",
+    "精力",
+    "精力剤",
+    "ED",
+    "勃起",
+    "アダルト",
+    "18禁",
+    "R18",
+    "官能",
+    "タバコ",
+    "電子タバコ",
+    "VAPE",
+    "加熱式タバコ",
+    "CBD",
+    "大麻",
+    "ヘンプ",
+  ];
+
+  /**
+   * 取得した商品リストからMeta規約に抵触する商品を除外する
+   * @param {Object[]} items - fetchRakutenItems の戻り値
+   * @returns {Object[]} フィルタリング済みの商品リスト
+   */
+  function filterBlockedProducts(items) {
+    const before = items.length;
+    const filtered = items.filter(function (item) {
+      const target = (
+        (item.name || "") +
+        " " +
+        (item.caption || "")
+      ).toLowerCase();
+      return !BLOCKED_WORDS.some(function (word) {
+        return target.indexOf(word.toLowerCase()) !== -1;
+      });
+    });
+    if (filtered.length < before) {
+      Logger.log(
+        `[searchRakutenProduct] Meta規約フィルタ: ${before}件→${filtered.length}件 (${before - filtered.length}件除外)`,
+      );
+    }
+    return filtered;
+  }
+
   // seasonalTopics からランダムに1つ選び、季節キーワードとする
   const seasonalTopics =
     trendData && trendData.seasonalTopics && trendData.seasonalTopics.length > 0
@@ -288,7 +341,7 @@ function searchRakutenProduct(keyword, trendData) {
     try {
       const searchKeyword = keyword + " " + seasonKeyword;
       Logger.log(`[searchRakutenProduct] 第1希望で検索: "${searchKeyword}"`);
-      products = fetchRakutenItems(searchKeyword, 5);
+      products = filterBlockedProducts(fetchRakutenItems(searchKeyword, 5));
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第1希望でエラー: ${e.message}`);
       products = [];
@@ -299,7 +352,7 @@ function searchRakutenProduct(keyword, trendData) {
   if (products.length === 0 && seasonKeyword) {
     try {
       Logger.log(`[searchRakutenProduct] 第2希望で検索: "${seasonKeyword}"`);
-      products = fetchRakutenItems(seasonKeyword, 5);
+      products = filterBlockedProducts(fetchRakutenItems(seasonKeyword, 5));
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第2希望でエラー: ${e.message}`);
       products = [];
@@ -310,7 +363,7 @@ function searchRakutenProduct(keyword, trendData) {
   if (products.length === 0 && keyword) {
     try {
       Logger.log(`[searchRakutenProduct] 第3希望で検索: "${keyword}"`);
-      products = fetchRakutenItems(keyword, 5);
+      products = filterBlockedProducts(fetchRakutenItems(keyword, 5));
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第3希望でエラー: ${e.message}`);
       products = [];
@@ -326,7 +379,7 @@ function searchRakutenProduct(keyword, trendData) {
       Logger.log(
         `[searchRakutenProduct] 第4希望（最終フォールバック）で検索: "${finalFallback}"`,
       );
-      products = fetchRakutenItems(finalFallback, 10);
+      products = filterBlockedProducts(fetchRakutenItems(finalFallback, 10));
     } catch (e) {
       Logger.log(`[searchRakutenProduct] 第4希望でもエラー: ${e.message}`);
       products = [];
@@ -605,6 +658,7 @@ function generateNormalPostsBatch(trendData, offset, count) {
 ・投稿本文のみを出力してください。
 ・「～ですか？」や「どう思いますか？」などの、読者への問いかけや意見を求める表現は一切禁止です。
 ・一人称（自分自身の呼び方）は上記ペルソナの設定に従ってください（ペルソナに指定がない場合は「僕」）。
+・【偽情報・スパム回避】科学的根拠のない断定（「これをやれば絶対に治る」「必ず成功する」等）や、過度な不安を煽る表現はMeta社の規約違反となるため厳禁です。
 ${xStructureHints}
 【★文字数制限【厳守】★】
 ・各投稿はそれぞれ必ず全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内に収めてください。
@@ -739,6 +793,7 @@ ${xAffHints}
 【構成指示】
 ・親ポスト: 商品は直接紹介せず、関連する「あるあるな悩み」「共感」「ライフハックのヒント」などを短く語ること。
 ・子ポスト: ${product.name}のベネフィット（悩みの解決） ＋ 行動喚起（CTA） ＋ ${product.url} ＋ 関連ハッシュタグ（1個のみ）
+・【偽装行為の絶対禁止（Meta規約準拠）】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー」「買ってみた・使っている等の嘘」を絶対に捏造しないでください。あくまで客観的なキュレーターとしての紹介（例：「〇〇という悩みに効くらしい」「〇〇で評判のアイテム」等）に徹底してください。
 ・今日は${todayStr}です。指定された曜日（平日・休日・週末など）のリアルなタイム感と、ユーザーの心理状態（例：日曜の夜の憂鬱、月曜の朝の気怠さ、金曜の開放感など）に完全に合致した内容にしてください。
 ・【厳禁】実際の曜日と矛盾する表現（例：日曜日なのに「今週も始まったね」「月曜の朝は」等）は絶対に出力しないでください。
 ・【厳禁】実際の日付と矛盾する表現（例：月初なのに「後半戦」「月末」「いよいよ今月も終わり」等）や、季節感のズレは絶対に出力しないでください。
