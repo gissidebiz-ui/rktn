@@ -3,9 +3,26 @@ AI 支援モジュール。
 AI クライアントの生成と、再試行ロジックを含むコンテンツ生成を担当します。
 """
 from google import genai
+import threading
 import time
 from typing import Dict, Any
 import retry_helper
+
+
+# === 15 RPM 制限回避用（Gemini無料枠対策） ===
+_api_lock = threading.Lock()
+_last_api_call_time = 0.0
+API_CALL_INTERVAL_SECONDS = 4.1
+
+def _enforce_rate_limit():
+    """グローバルロックを用いて、API呼び出し間の最低インターバルを保証する"""
+    global _last_api_call_time
+    with _api_lock:
+        now = time.time()
+        elapsed = now - _last_api_call_time
+        if elapsed < API_CALL_INTERVAL_SECONDS:
+            time.sleep(API_CALL_INTERVAL_SECONDS - elapsed)
+        _last_api_call_time = time.time()
 
 
 def create_ai_client(api_key: str) -> genai.Client:
@@ -43,6 +60,9 @@ def generate_with_retry(client: genai.Client, prompt: str, config: Dict[str, Any
             except Exception:
                 pass
             
+            # APIの呼び出し間隔を厳密に管理 (429エラー防止)
+            _enforce_rate_limit()
+
             # AI への生成リクエスト実行
             model_name = config.get("model_name", "gemini-2.0-flash")
             response = client.models.generate_content(
