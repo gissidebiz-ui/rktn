@@ -164,9 +164,29 @@ function fetchRakutenItems(keyword, hits) {
         i = item.hotel;
       }
 
+      let url = i.affiliateUrl || i.itemUrl || i.hotelInformationUrl || "";
+      // トラベルAPIでアフィリエイトリンクが画像URLになっている場合の修正
+      if (
+        apiType === "travel" &&
+        url &&
+        url.indexOf("img.travel.rakuten.co.jp") !== -1 &&
+        i.hotelInformationUrl
+      ) {
+        if (url.indexOf("?pc=") !== -1) {
+          const baseUrl = url.split("?pc=")[0];
+          url = baseUrl + "?pc=" + encodeURIComponent(i.hotelInformationUrl);
+          Logger.log(
+            "[Rakuten] 不正なトラベル画像リンクを施設ページURLで修復しました: " +
+              url,
+          );
+        } else {
+          url = i.hotelInformationUrl;
+        }
+      }
+
       return {
         name: i.itemName || i.title || i.hotelName || "",
-        url: i.affiliateUrl || i.itemUrl || i.hotelInformationUrl || "",
+        url: url,
         price: String(i.itemPrice || i.salesPrice || i.hotelMinCharge || ""),
         reviewAvg: String(i.reviewAverage || "0"),
         reviewCount: String(i.reviewCount || "0"),
@@ -293,9 +313,29 @@ function fetchRakutenItemsByUrl(rakutenApiUrl) {
 
     const mappedItems = items.map(function (item) {
       const i = item.Item || item;
+
+      let url = i.affiliateUrl || i.itemUrl || i.hotelInformationUrl || "";
+      // URL指定からの取得時も同様にトラベルの不正画像リンクを修正
+      if (
+        CONFIG.RAKUTEN_API_TYPE === "travel" &&
+        url &&
+        url.indexOf("img.travel.rakuten.co.jp") !== -1 &&
+        i.hotelInformationUrl
+      ) {
+        if (url.indexOf("?pc=") !== -1) {
+          const baseUrl = url.split("?pc=")[0];
+          url = baseUrl + "?pc=" + encodeURIComponent(i.hotelInformationUrl);
+          Logger.log(
+            "[Rakuten] URL指定: 不正なトラベル画像リンクを施設ページURLで修復しました",
+          );
+        } else {
+          url = i.hotelInformationUrl;
+        }
+      }
+
       return {
         name: i.itemName || i.title || i.hotelName || "",
-        url: i.affiliateUrl || i.itemUrl || i.hotelInformationUrl || "",
+        url: url,
         price: String(i.itemPrice || i.salesPrice || i.hotelMinCharge || ""),
         reviewAvg: String(i.reviewAverage || "0"),
         reviewCount: String(i.reviewCount || "0"),
