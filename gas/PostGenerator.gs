@@ -611,9 +611,14 @@ function generatePostSet(keywordOrUrl, offset = 0, timeContext = "") {
   );
 
   for (let i = 0; i < POST_CONFIG.NORMAL_POSTS_PER_SET; i++) {
+    // 生成失敗（空文字）の場合はスキップ（エラー文字列を投稿しない）
+    if (!batchTexts[i]) {
+      Logger.log(`[PostGenerator] 通常投稿 ${i + 1} の生成に失敗しました。スキップします。`);
+      continue;
+    }
     posts.push({
       type: "normal",
-      text: batchTexts[i] || `（通常投稿 ${i + 1} の生成に失敗しました）`,
+      text: batchTexts[i],
       isThreadStart: i === 0,
     });
   }
@@ -732,16 +737,25 @@ function generatePostSet(keywordOrUrl, offset = 0, timeContext = "") {
         `[PostGenerator] フォールバック処理中にエラーが発生しました: ${e.message}`,
       );
     }
-    posts.push({
-      type: "normal",
-      text: fallbackTexts[0] || "（代替通常投稿の生成に失敗しました）",
-      isThreadStart: false,
-    });
-    posts.push({
-      type: "normal",
-      text: fallbackTexts[1] || "（代替通常投稿の生成に失敗しました）",
-      isThreadStart: false,
-    });
+    // 生成失敗（空文字）の場合はスキップ（エラー文字列を投稿しない）
+    if (fallbackTexts[0]) {
+      posts.push({
+        type: "normal",
+        text: fallbackTexts[0],
+        isThreadStart: false,
+      });
+    } else {
+      Logger.log("[PostGenerator] フォールバック投稿1の生成に失敗しました。スキップします。");
+    }
+    if (fallbackTexts[1]) {
+      posts.push({
+        type: "normal",
+        text: fallbackTexts[1],
+        isThreadStart: false,
+      });
+    } else {
+      Logger.log("[PostGenerator] フォールバック投稿2の生成に失敗しました。スキップします。");
+    }
   }
 
   // 4件を超える場合は切り詰め（フォールバックの二重追加を防止）
