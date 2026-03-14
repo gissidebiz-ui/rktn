@@ -824,6 +824,31 @@ function generateNormalPostsBatch(trendData, offset, count, timeContext = "") {
     instructions += `\n【投稿${i + 1}の指示】\n・テーマ: 「${focusKeyword}」を自然な形で組み込むこと\n・スタイル: 「${style}」\n`;
   }
 
+  const todayDate = new Date();
+  const dayOfWeek = todayDate.getDay(); // 0(Sun) - 6(Sat)
+  const themeMap = [
+    POST_CONFIG.THEME_SUNDAY,
+    POST_CONFIG.THEME_MONDAY,
+    POST_CONFIG.THEME_TUESDAY,
+    POST_CONFIG.THEME_WEDNESDAY,
+    POST_CONFIG.THEME_THURSDAY,
+    POST_CONFIG.THEME_FRIDAY,
+    POST_CONFIG.THEME_SATURDAY
+  ];
+  const dailyTheme = themeMap[dayOfWeek];
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const isHoliday = isJapaneseHoliday(todayDate);
+  const isDayOff = isWeekend || isHoliday;
+  
+  const dayTypeRule = isDayOff
+    ? `\n・【休日ルールの絶対遵守】本日は休日（週末または祝日）です。満員電車での通勤や会社での業務など、平日に仕事へ行っている前提の描写は【絶対厳禁】です。休日ならではの過ごし方や、リラックスした心理状態に焦点を当ててください。`
+    : `\n・【平日ルールの絶対遵守】本日は平日です。休日のような過ごし方に関する描写は避け、平日の仕事、通勤、日常の疲れなどに即した内容を意識してください。`;
+
+  const dailyThemeRule = dailyTheme 
+    ? `\n・【本日の特約テーマ】\nこのアカウントの今日のテーマは「${dailyTheme}」です。すべての投稿はこの特約テーマを軸にした切り口（ストーリーや文脈）で作成し、他アカウントと内容が似ないよう独自性を高めてください。` 
+    : "";
+  const additionalRules = dayTypeRule + dailyThemeRule;
+
   const prompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層から絶大な支持を得ているインフルエンサーです。
 
 【重要制約】
@@ -841,7 +866,7 @@ function generateNormalPostsBatch(trendData, offset, count, timeContext = "") {
 Meta社のスパム・詐欺検知アルゴリズムを回避するため、以下の表現やテーマは絶対に使用しないでください。
   - NGワード：「オンラインサロン」「情報商材」「副業」「不労所得」「人生逆転」「稼ぐ」「儲かる」「投資で増やす」
   - NGテーマ：「高額なオンライン講座の受講を匂わせる表現」「経済的自由を煽る自己啓発的な表現」
-・【偽装行為の絶対禁止】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー（買ってみた等）」を絶対に捏造しないでください。あくまで客観的なキュレーターとして紹介してください。
+・【偽装行為の絶対禁止】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー（買ってみた等）」を絶対に捏造しないでください。あくまで客観的なキュレーターとして紹介してください。${additionalRules}
 ${xStructureHints}
 【★文字数制限【厳守】★】
 ・各投稿はそれぞれ必ず全角${POST_CONFIG.NORMAL_POST_MAX_CHARS}文字以内に収めてください。
@@ -947,6 +972,31 @@ function generateAffiliatePostPair(product, trendContext, timeContext = "") {
 `
       : "";
 
+  const todayDate = new Date();
+  const dayOfWeek = todayDate.getDay(); // 0(Sun) - 6(Sat)
+  const themeMap = [
+    POST_CONFIG.THEME_SUNDAY,
+    POST_CONFIG.THEME_MONDAY,
+    POST_CONFIG.THEME_TUESDAY,
+    POST_CONFIG.THEME_WEDNESDAY,
+    POST_CONFIG.THEME_THURSDAY,
+    POST_CONFIG.THEME_FRIDAY,
+    POST_CONFIG.THEME_SATURDAY
+  ];
+  const dailyTheme = themeMap[dayOfWeek];
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+  const isHoliday = isJapaneseHoliday(todayDate);
+  const isDayOff = isWeekend || isHoliday;
+  
+  const dayTypeRule = isDayOff
+    ? `\n・【休日ルールの絶対遵守】本日は休日（週末または祝日）です。満員電車での通勤や会社での業務など、平日に仕事へ行っている前提の描写は【絶対厳禁】です。休日ならではの過ごし方や、リラックスした心理状態に焦点を当ててください。`
+    : `\n・【平日ルールの絶対遵守】本日は平日です。休日のような過ごし方に関する描写は避け、平日の仕事、通勤、日常の疲れなどに即した内容を意識してください。`;
+
+  const dailyThemeRule = dailyTheme 
+    ? `\n・【本日の特約テーマ】\nこのアカウントの今日のテーマは「${dailyTheme}」です。投稿全体をこの特約テーマを軸にした切り口（ストーリーや文脈）で統一し、他アカウントと内容が似ないよう独自性を高めてください。` 
+    : "";
+  const additionalRules = dayTypeRule + dailyThemeRule;
+
   const prompt = `あなたは${platformName}で「${TREND_CONFIG.TARGET_DEMO}」層に向けて、本当に良いモノだけを勧めるキュレーターです。
 
 【紹介商品詳細】
@@ -993,7 +1043,7 @@ ${xAffHints}
 Meta社のスパム・詐欺検知アルゴリズムを回避するため、以下の表現やテーマは絶対に使用しないでください。
   - NGワード：「オンラインサロン」「情報商材」「副業」「不労所得」「人生逆転」「稼ぐ」「儲かる」「投資で増やす」
   - NGテーマ：「高額なオンライン講座の受講を匂わせる表現」「経済的自由を煽る自己啓発的な表現」
-・【偽装行為の絶対禁止】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー（買ってみた等）」を絶対に捏造しないでください。あくまで客観的なキュレーターとして紹介してください。
+・【偽装行為の絶対禁止】あなたが実際に購入・使用したかのような「架空の体験談」「虚偽のレビュー（買ってみた等）」を絶対に捏造しないでください。あくまで客観的なキュレーターとして紹介してください。${additionalRules}
 
 【JSON形式での厳格な出力制限】
 テキストのパースエラーを防ぐため、必ず以下のJSONフォーマットのみで出力させ、余計な会話文を排除してください。
@@ -1136,6 +1186,24 @@ function cleanPostText(text) {
 
   // 日本語が1文字でも含まれていれば OK とする（より柔軟に）
   return /[ぁ-んァ-ン一-龥]/.test(cleaned) ? cleaned : "";
+}
+
+/**
+ * 日本の祝日かどうかを判定する
+ * @param {Date} date 判定する日付
+ * @return {boolean} 祝日ならtrue
+ */
+function isJapaneseHoliday(date) {
+  try {
+    const calendarId = 'ja.japanese#holiday@group.v.calendar.google.com';
+    const calendar = CalendarApp.getCalendarById(calendarId);
+    if (!calendar) return false;
+    const events = calendar.getEventsForDay(date);
+    return events.length > 0;
+  } catch (e) {
+    Logger.log('[PostGenerator] 祝日判定エラー: ' + e.message);
+    return false;
+  }
 }
 
 // ================================

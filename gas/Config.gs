@@ -10,6 +10,7 @@
  * 2. 以下のキーを登録（アカウントごとに固有値を設定）:
  *    - GEMINI_API_KEY, RAKUTEN_APP_ID
  *    - TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET
+ *    - THEME_SUNDAY, THEME_MONDAY... THEME_SATURDAY (オプション: 曜日別の独自テーマ)
  * ============================================================
  */
 
@@ -174,6 +175,15 @@ const POST_CONFIG = {
   // --- 分析・改善設定 ---
   ANALYZE_DAYS_BACK: 7, // 過去何日間の投稿を分析対象にするか
   HIGH_PERFORMANCE_LIMIT: 5, // 優秀な投稿として抽出する数
+
+  // --- 曜日別テーマ ---
+  get THEME_SUNDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_SUNDAY") || "").trim(); },
+  get THEME_MONDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_MONDAY") || "").trim(); },
+  get THEME_TUESDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_TUESDAY") || "").trim(); },
+  get THEME_WEDNESDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_WEDNESDAY") || "").trim(); },
+  get THEME_THURSDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_THURSDAY") || "").trim(); },
+  get THEME_FRIDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_FRIDAY") || "").trim(); },
+  get THEME_SATURDAY() { return (PropertiesService.getScriptProperties().getProperty("THEME_SATURDAY") || "").trim(); },
 
   get NORMAL_POST_STYLES() {
     const raw =
